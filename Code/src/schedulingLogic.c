@@ -15,6 +15,30 @@
 
 /* --------------------------- struct definitions -------------------------- */
 
+/**
+ * The Queue structure represents a scheduler queue. This queue can be a ready queue or a waiting queue. 
+ * These queues contain the PID of the processes.
+ */
+typedef struct Queue_t Queue;
+
+/**
+ * The QueueNode struct represents a element of the scheduler's queues, here it is a process's PID. 
+ * It contains a pointer to the next element of the queue, and a data field which is the pid
+ */
+typedef struct QueueNode_t QueueNode;
+
+struct QueueNode
+{
+    int data; //PID of the process in the node
+    QueueNode *nextNode;
+};
+
+struct Queue
+{
+    QueueNode *tail;
+    QueueNode *head;
+};
+
 struct Scheduler_t
 {
     // This is not the ready queues, but the ready queue algorithms

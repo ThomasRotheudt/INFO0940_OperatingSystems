@@ -434,8 +434,11 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     /* Main loop of the simulation.*/
     while (!workloadOver(workload)) // You probably want to change this condition
     {
-        // TODO
-        break;
+        
+
+        time++;
+        if(time >= 3)
+            break;
     }
 
     freeComputer(computer);

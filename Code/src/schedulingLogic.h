@@ -29,4 +29,6 @@ void freeScheduler(Scheduler *scheduler);
 
 /* -------------------------- scheduling functions ------------------------- */
 
+bool addProccess(Scheduler *scheduler, int pid);
+
 #endif // schedulingLogic_h

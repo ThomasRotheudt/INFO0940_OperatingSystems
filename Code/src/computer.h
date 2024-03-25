@@ -28,7 +28,8 @@ struct Computer_t
 
 typedef enum
 {
-    IDLE
+    IDLE,
+    WORKING
 } coreState;
 
 struct CPU_t

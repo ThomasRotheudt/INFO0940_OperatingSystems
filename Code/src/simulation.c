@@ -431,13 +431,25 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
 
     int time = 0;
 
+    printf("Number of core: %d\nNumber of processes: %d\n", cpu->coreCount, workload->nbProcesses);
+
     /* Main loop of the simulation.*/
     while (!workloadOver(workload)) // You probably want to change this condition
-    {
-        
+    {      
+        // Check if a new process must be add to the scheduler
+        for (int i = 0; i < workload->nbProcesses; i++)
+        {
+            int pid = getPIDFromWorkload(workload, i);
+            if (time >= getProcessStartTime(workload, pid))
+            {
+                addProcessToScheduler(scheduler, pid);
+            }
+        }
+
+        printQueue(scheduler);
 
         time++;
-        if(time >= 3)
+        if(time >= 50)
             break;
     }
 

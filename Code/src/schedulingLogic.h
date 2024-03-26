@@ -29,6 +29,14 @@ void freeScheduler(Scheduler *scheduler);
 
 /* -------------------------- scheduling functions ------------------------- */
 
-bool addProccess(Scheduler *scheduler, int pid);
+/**
+ * Add a new process to the scheduler
+ *
+ * @param scheduler: the scheduler
+ * @param pid: the pid of the new process
+ */
+void addProcessToScheduler(Scheduler *scheduler, int pid);
+
+void printQueue(Scheduler *scheduler);
 
 #endif // schedulingLogic_h

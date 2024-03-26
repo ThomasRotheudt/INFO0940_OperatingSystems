@@ -95,3 +95,4 @@ void freeDisk(Disk *disk)
 {
     free(disk);
 }
+

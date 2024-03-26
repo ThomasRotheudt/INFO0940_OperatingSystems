@@ -12,6 +12,7 @@
 #include "schedulingAlgorithms.h"
 
 #define NB_WAIT_QUEUES 1
+#define FIRST_QUEUE 0
 
 /* --------------------------- struct definitions -------------------------- */
 
@@ -29,7 +30,9 @@ typedef struct QueueNode_t QueueNode;
 
 struct QueueNode_t
 {
-    int data; //PID of the process in the node
+    int data; // PID of the process in the node
+    int indexQueue; // The index of the queue in which the node is (use it when returns from waiting queue) 
+    int age; // The time the process has spent in its current queue
     QueueNode *nextNode;
 };
 
@@ -43,10 +46,9 @@ struct Scheduler_t
 {
     // This is not the ready queues, but the ready queue algorithms
     SchedulingAlgorithm **readyQueueAlgorithms;
-    Queue *readyQueue;
+    Queue **readyQueue;
     Queue *waitingQueue;
     int readyQueueCount;
-
 };
 
 /* ---------------------------- static functions --------------------------- */
@@ -55,6 +57,16 @@ struct Scheduler_t
 static Queue *initQueue();
 
 static void freeQueue(Queue *queue);
+
+/**
+ * checks if the data is already present in the queue
+ *
+ * @param queue: the queue
+ * @param data: the data to check
+ *
+ * @return true if the data is in the queue, false otherwise
+ */
+static bool isInQueue(Queue *queue, int data);
 
 /**
  * insert a new data in the queue
@@ -96,7 +108,8 @@ Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQu
     scheduler->readyQueueAlgorithms = readyQueueAlgorithms;
     scheduler->readyQueueCount = readyQueueCount;
 
-    scheduler->readyQueue = initQueue();
+    // Allocation ready queue
+    scheduler->readyQueue = malloc(readyQueueCount * sizeof(Queue));
     if(!scheduler->readyQueue)
     {
         for (int i = 0; i < scheduler->readyQueueCount; i++)
@@ -108,15 +121,49 @@ Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQu
         return NULL;
     }
 
+    // Initialisation of queues
+    for (int i = 0; i < readyQueueCount; i++)
+    {
+        scheduler->readyQueue[i] = initQueue();
+        if(!scheduler->readyQueue[i])
+        {
+
+            for (int j = 0; j <= i; j++)
+            {
+                freeQueue(scheduler->readyQueue[j]);
+            }
+
+            free(scheduler->readyQueue);
+
+            for (int k = 0; k < scheduler->readyQueueCount; k++)
+            {
+                free(scheduler->readyQueueAlgorithms[k]);
+            }
+
+            free(scheduler->readyQueueAlgorithms);
+            free(scheduler);
+            return NULL;
+        }
+    }
+
+    //Init of the wait queue
     scheduler->waitingQueue = initQueue();
     if(!scheduler->waitingQueue)
     {
+        // Freeing ready queue algorithms
         for (int i = 0; i < scheduler->readyQueueCount; i++)
         {
             free(scheduler->readyQueueAlgorithms[i]);
         }
         free(scheduler->readyQueueAlgorithms);
-        freeQueue(scheduler->readyQueue);
+        
+        // Freeing ready queues
+        for (int i = 0; i < scheduler->readyQueueCount; i++)
+        {
+            freeQueue(scheduler->readyQueue[i]);
+        }
+        free(scheduler->readyQueue);
+
         free(scheduler);
         return NULL;
     }
@@ -131,26 +178,56 @@ void freeScheduler(Scheduler *scheduler)
         free(scheduler->readyQueueAlgorithms[i]);
     }
     free(scheduler->readyQueueAlgorithms);
-    freeQueue(scheduler->readyQueue);
+    
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        freeQueue(scheduler->readyQueue[i]);
+    }
+    free(scheduler->readyQueue);
+
     freeQueue(scheduler->waitingQueue);
     free(scheduler);
 }
 
 /* -------------------------- scheduling functions ------------------------- */
 
-bool addProccess(Scheduler *scheduler, int pid)
+void addProcessToScheduler(Scheduler *scheduler, int pid)
 {
     if(!scheduler)
     {
-        return false;
+        return;
     }
+    Queue *firstQueue = scheduler->readyQueue[FIRST_QUEUE];
 
-    enqueue(scheduler->readyQueue, pid);
+    if (!isInQueue(firstQueue, pid))
+    {
+        enqueue(firstQueue, pid);
+    }
 }
 
 
+void printQueue(Scheduler *scheduler)
+{
+    printf("\n|--------------------QUEUE---------------------|\n");
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        printf("Queue %d: head---> ", i);
+        QueueNode *current = scheduler->readyQueue[i]->head;
+        while (current)
+        {
+            printf("%d ", current->data);
+            current = current->nextNode;
+        }
+        printf("<---tail\n");
+    }
+    printf("|----------------------------------------------|\n");
+}
 
 /* ---------------------------- static functions --------------------------- */
+
+
+
+
 
 /* ---------------- static Queue functions  --------------- */
 
@@ -177,9 +254,50 @@ static QueueNode *initQueueNode(int data)
     }
 
     queueNode->data = data;
+    queueNode->age = 0;
+    queueNode->indexQueue = FIRST_QUEUE;
     queueNode->nextNode = NULL;
 
     return queueNode;
+}
+
+static bool isInQueue(Queue *queue, int data)
+{
+    if(!queue)
+    {
+        return false;
+    }
+
+    QueueNode *current = queue->head;
+    while (current)
+    {
+        if (current->data == data)
+        { 
+            return true;
+        }
+
+        current = current->nextNode;
+    }
+    
+    return false;
+} 
+
+static void freeQueue(Queue *queue)
+{
+    if(!queue)
+    {
+        return;
+    }
+
+    QueueNode *current = queue->head;
+    while (current)
+    {
+        QueueNode *tmp = current;
+        current = current->nextNode;
+        free(tmp);
+    }
+
+    free(queue);
 }
 
 static bool enqueue(Queue *queue, int data)
@@ -197,6 +315,7 @@ static bool enqueue(Queue *queue, int data)
 
     if(!queue->head)
     {
+        printf("empty");
         queue->head = queueNode;
         queue->tail = queueNode;
     }
@@ -232,21 +351,5 @@ static int dequeue(Queue *queue)
     return data;
 }
 
-static void freeQueue(Queue *queue)
-{
-    if(!queue)
-    {
-        return;
-    }
 
-    QueueNode *current = queue->head;
-    while (current)
-    {
-        QueueNode *tmp = current;
-        current = current->nextNode;
-        free(tmp);
-    }
-
-    free(queue);
-}
 

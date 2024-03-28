@@ -21,6 +21,14 @@ typedef struct Scheduler_t Scheduler;
 
 int getWaitQueueCount(void);
 
+/**
+ * Get the PID from the first queue which is not empty (to respect the priority queue)
+ * 
+ * @param scheduler the scheduler
+ * @return int: the pid
+ */
+int getPIDfromReadyQueue(Scheduler *scheduler);
+
 /* -------------------------- init/free functions -------------------------- */
 
 Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQueueCount);
@@ -36,6 +44,8 @@ void freeScheduler(Scheduler *scheduler);
  * @param pid: the pid of the new process
  */
 void addProcessToScheduler(Scheduler *scheduler, int pid);
+
+void scheduling(Scheduler *scheduler);
 
 void printQueue(Scheduler *scheduler);
 

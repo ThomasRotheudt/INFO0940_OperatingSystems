@@ -53,6 +53,16 @@ struct Scheduler_t
 
 /* ---------------------------- static functions --------------------------- */
 
+/**
+ * Check if a pid is in the scheduler (in the different queues)
+ * 
+ * @param scheduler
+ * @param pid 
+ * @return true 
+ * @return false 
+ */
+static bool isInScheduler(Scheduler *scheduler, int pid);
+
 /* ---------------- static Queue functions  --------------- */
 static Queue *initQueue();
 
@@ -69,6 +79,15 @@ static void freeQueue(Queue *queue);
 static bool isInQueue(Queue *queue, int data);
 
 /**
+ * Check if the queue is empty
+ * 
+ * @param queue the queue
+ * @return true 
+ * @return false 
+ */
+static bool isEmpty(Queue *queue);
+
+/**
  * insert a new data in the queue
  *
  * @param queue: the queue
@@ -77,6 +96,15 @@ static bool isInQueue(Queue *queue, int data);
  * @return true if the data is correctly stored, false otherwise
  */
 static bool enqueue(Queue *queue, int data);
+
+/**
+ * Remove an element form the list
+ * 
+ * @param queue 
+ * @param data 
+ * @return return the data, -1 if an error occurs or the element not in the queue.
+ */
+static int  removeElement(Queue *queue, int data);
 
 /**
  * remove the head data in the queue
@@ -93,6 +121,20 @@ static int dequeue(Queue *queue);
 int getWaitQueueCount(void)
 {
     return NB_WAIT_QUEUES;
+}
+
+
+int getPIDfromReadyQueue(Scheduler *scheduler)
+{
+    Queue **readyQueues = scheduler->readyQueue;
+
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        if(!isEmpty(readyQueues[i]))
+        {
+            return readyQueues[i]->head->data;
+        }
+    }
 }
 
 /* -------------------------- init/free functions -------------------------- */
@@ -121,7 +163,7 @@ Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQu
         return NULL;
     }
 
-    // Initialisation of queues
+    // Initialisation of ready queues
     for (int i = 0; i < readyQueueCount; i++)
     {
         scheduler->readyQueue[i] = initQueue();
@@ -191,24 +233,38 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
+
 void addProcessToScheduler(Scheduler *scheduler, int pid)
 {
     if(!scheduler)
     {
         return;
     }
+    
     Queue *firstQueue = scheduler->readyQueue[FIRST_QUEUE];
+    bool inScheduler = isInScheduler(scheduler, pid);
 
-    if (!isInQueue(firstQueue, pid))
+    if(!inScheduler)
     {
-        enqueue(firstQueue, pid);
+        if(!enqueue(firstQueue, pid))
+        {
+            fprintf(stderr, "Error: cannot add process %d to the scheduler\n", pid);
+            return;
+        }
+    }
+}
+
+void scheduling(Scheduler *scheduler){
+    if(!scheduler)
+    {
+        return;
     }
 }
 
 
 void printQueue(Scheduler *scheduler)
 {
-    printf("\n|--------------------QUEUE---------------------|\n");
+    printf("\n|------------------QUEUE-----------------------|\n");
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
         printf("Queue %d: head---> ", i);
@@ -220,14 +276,41 @@ void printQueue(Scheduler *scheduler)
         }
         printf("<---tail\n");
     }
-    printf("|----------------------------------------------|\n");
+    printf("|--------------WAITING QUEUE-------------------|\n");
+        printf("Waiting queue: head---> ");
+        QueueNode *current = scheduler->waitingQueue->head;
+        while (current)
+        {
+            printf("%d ", current->data);
+            current = current->nextNode;
+        }
+        printf("<---tail\n");
+    printf("|----------------------------------------------|\n\n");
 }
 
 /* ---------------------------- static functions --------------------------- */
 
+static bool isInScheduler(Scheduler *scheduler, int pid)
+{
+    if(!scheduler)
+    {
+        return false;
+    }
 
+    bool isInScheduler = false;
 
+    Queue **readyQueues = scheduler->readyQueue;
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        bool inQueue = isInQueue(readyQueues[i], pid);
+        if(inQueue)
+        {
+            return true;
+        }
+    }
 
+    return false;
+}
 
 /* ---------------- static Queue functions  --------------- */
 
@@ -282,6 +365,16 @@ static bool isInQueue(Queue *queue, int data)
     return false;
 } 
 
+static bool isEmpty(Queue *queue)
+{
+    if(!queue)
+    {
+        return;
+    }
+
+    return (!queue->tail) ? true : false;
+}
+
 static void freeQueue(Queue *queue)
 {
     if(!queue)
@@ -315,7 +408,6 @@ static bool enqueue(Queue *queue, int data)
 
     if(!queue->head)
     {
-        printf("empty");
         queue->head = queueNode;
         queue->tail = queueNode;
     }
@@ -328,11 +420,49 @@ static bool enqueue(Queue *queue, int data)
     return true;
 }
 
+static int removeElement(Queue *queue, int data)
+{
+    if(!queue)
+    {
+        return -1;
+    }
+
+    QueueNode *tmp = queue->head, *prev = NULL;
+    int dataToReturn = 0;
+
+    // The element is the head of the queue
+    if (tmp != NULL && tmp->data == data) 
+    {
+        queue->head = tmp->nextNode;
+        dataToReturn = tmp->data;
+        free(tmp);
+        return dataToReturn;
+    }
+
+    // The element in the queue
+    while (tmp != NULL && tmp->data != data) {
+        prev = tmp;
+        tmp = tmp->nextNode;
+    }
+
+    if (tmp == NULL) {
+        fprintf(stderr, "Error: the element is not in the queue.\n");
+        return -1;
+    }
+
+    prev->nextNode = tmp->nextNode;
+    dataToReturn = tmp->data;
+
+    free(tmp);
+
+    return dataToReturn;
+}
+
 static int dequeue(Queue *queue)
 {
     if(!queue || !queue->head)
     {
-        return -1;
+        return false;
     }
 
     int data = queue->head->data;

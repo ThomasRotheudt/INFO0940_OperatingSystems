@@ -193,7 +193,8 @@ int main(int argc, const char *argv[])
     printf("----------------- Stats -----------------\n");
     printStats(allStats);
     printf("-----------------------------------------\n");
-    printf("----------------- Graph -----------------\n");
+*/
+    /* printf("----------------- Graph -----------------\n");
     printGraph(graph);
     printf("-----------------------------------------\n");
  */

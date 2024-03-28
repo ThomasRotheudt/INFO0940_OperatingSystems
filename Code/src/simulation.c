@@ -440,13 +440,28 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         for (int i = 0; i < workload->nbProcesses; i++)
         {
             int pid = getPIDFromWorkload(workload, i);
-            if (time >= getProcessStartTime(workload, pid))
+            if (time >= getProcessStartTime(workload, pid) && workload->processesInfo[i]->pcb->state == READY)
             {
                 addProcessToScheduler(scheduler, pid);
             }
-        }
+        } 
 
+        // Check event (interrupt for CPU burst or IO burst)
+
+        if(time == 20)
+            scheduling(scheduler);
         printQueue(scheduler);
+
+
+        // Add process to graph
+        /* for (int i = 0; i < workload->nbProcesses; i++)
+        {
+            int pid = getPIDFromWorkload(workload, i);
+            if(time >= getProcessStartTime(workload, pid))
+            {
+                addProcessEventToGraph(graph, pid, time, workload->processesInfo[i]->pcb->state, 0);
+            }
+        } */
 
         time++;
         if(time >= 50)

@@ -41,6 +41,7 @@ struct CPU_t
 
 struct Core_t
 {
+    int pid;
     coreState state;
 };
 
@@ -63,7 +64,36 @@ void freeComputer(Computer *computer);
 CPU *initCPU(int coreCount);
 void freeCPU(CPU *cpu);
 
+/**
+ * @brief Set a process to run on a core of the cpu with the given PID
+ * 
+ * @param cpu: the cpu
+ * @param indexCore: the index of the cpu's core
+ * @param pid: the PID of the process
+ */
+void setProcessToCore(CPU *cpu, int indexCore, int pid);
+
+//!-------------------------------------------------------------------------------//
+//TODO handle the interrupts in the simulation
+/*The cpu check if a process on the cores have an IO interrupt if so 
+put this process on the disk (if idle) remove it from the core and put it in the waiting queue. 
+
+If the disk has finished the IO operation trigger a flag and remove the process from the wait queue
+put the process at the beginning of the ready queue in which it was (thanks to the node of the waiting queue)
+*/
+void interruptHandler(Workload* Workload,CPU *cpu, Scheduler *scheduler, Disk *disk);
+//!-------------------------------------------------------------------------------//
+
 Disk *initDisk(void);
 void freeDisk(Disk *disk);
+
+/**
+ * @brief Set a process to the disk for IO operation with the given PID
+ * 
+ * @param disk: the disk
+ * @param pid: the PID of the process
+ */
+void setProcessToDisk(Disk *disk, int pid);
+
 
 #endif // computer_h

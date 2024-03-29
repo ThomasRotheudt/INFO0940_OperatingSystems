@@ -11,6 +11,38 @@
 
 #define INTERRUPT_TIME 1
 
+/* ---------------------------- static functions --------------------------- */
+
+/* ----------------- static CPU functions  ---------------- */
+
+
+/* ----------------- static Disk functions  --------------- */
+
+
+
+/* -------------------------- getters and setters -------------------------- */
+
+/* ----------------- static CPU functions  ---------------- */
+
+void setProcessToCore(CPU *cpu, int indexCore, int pid)
+{
+    if(!cpu)
+    {
+        return;
+    }
+
+    Core *core = cpu->cores[indexCore];
+
+    core->pid = pid;
+    core->state = WORKING;
+}
+
+/* ----------------- static Disk functions  --------------- */
+
+
+
+/* -------------------------- init/free functions -------------------------- */
+
 Computer *initComputer(Scheduler *scheduler, CPU *cpu, Disk *disk)
 {
     Computer *computer = (Computer *) malloc(sizeof(Computer));
@@ -96,3 +128,4 @@ void freeDisk(Disk *disk)
     free(disk);
 }
 
+/* ---------------------------- static functions --------------------------- */

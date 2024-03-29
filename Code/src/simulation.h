@@ -90,6 +90,24 @@ int getProcessNextEventTime(Workload *workload, int pid);
  */
 int getProcessCurEventTimeLeft(Workload *workload, int pid);
 
+/**
+ * Get the current state of the process with the given PID.
+ * 
+ * @param workload : the workload
+ * @param pid: the PID of the process
+ * 
+ * @return the current state of the process
+ */
+ProcessState getProcessState(Workload *workload, int pid);
+
+/**
+ * Set the state of a process with the given PID.
+ * 
+ * @param workload: the workload
+ * @param pid: the PID of the process
+ * @param state: the new state of the process
+ */
+void setProcessState(Workload *workload, int pid, ProcessState state);
 
 /* -------------------------- init/free functions -------------------------- */
 

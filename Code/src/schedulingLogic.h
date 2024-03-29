@@ -25,7 +25,7 @@ int getWaitQueueCount(void);
  * Get the PID from the first queue which is not empty (to respect the priority queue)
  * 
  * @param scheduler the scheduler
- * @return int: the pid
+ * @return the pid, -1 otherwise
  */
 int getPIDfromReadyQueue(Scheduler *scheduler);
 

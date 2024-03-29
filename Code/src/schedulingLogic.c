@@ -135,6 +135,7 @@ int getPIDfromReadyQueue(Scheduler *scheduler)
             return readyQueues[i]->head->data;
         }
     }
+    return -1;
 }
 
 /* -------------------------- init/free functions -------------------------- */
@@ -312,6 +313,15 @@ static bool isInScheduler(Scheduler *scheduler, int pid)
     return false;
 }
 
+static void fcfs(Queue *readyQueue)
+{
+    if (!readyQueue)
+    {
+        return;
+    }
+
+
+}
 /* ---------------- static Queue functions  --------------- */
 
 static Queue *initQueue()

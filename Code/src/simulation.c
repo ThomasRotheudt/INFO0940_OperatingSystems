@@ -176,6 +176,16 @@ int getProcessCurEventTimeLeft(Workload *workload, int pid)
            - getProcessAdvancementTime(workload, pid);
 }
 
+ProcessState getProcessState(Workload *workload, int pid)
+{
+    return workload->processesInfo[getProcessIndex(workload, pid)]->pcb->state;
+}
+
+void setProcessState(Workload *workload, int pid, ProcessState state)
+{
+    workload->processesInfo[getProcessIndex(workload, pid)]->pcb->state = state;
+}
+
 static int getProcessIndex(Workload *workload, int pid)
 {
     int processIndex = 0;
@@ -444,24 +454,30 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             {
                 addProcessToScheduler(scheduler, pid);
             }
-        } 
+        }
 
-        // Check event (interrupt for CPU burst or IO burst)
+        // TODO Check event (interrupt for CPU burst or IO burst) -> put on waiting queue or put process on ready queue
+
+
+        // TODO Check for scheduling event -> update the state of age, limit execution, ect. update queue of process which must move of queue
+
+
+        // TODO put process on ressources if possible
 
         if(time == 20)
             scheduling(scheduler);
-        printQueue(scheduler);
+        //printQueue(scheduler);
 
 
         // Add process to graph
-        /* for (int i = 0; i < workload->nbProcesses; i++)
+        for (int i = 0; i < workload->nbProcesses; i++)
         {
             int pid = getPIDFromWorkload(workload, i);
             if(time >= getProcessStartTime(workload, pid))
             {
                 addProcessEventToGraph(graph, pid, time, workload->processesInfo[i]->pcb->state, 0);
             }
-        } */
+        }
 
         time++;
         if(time >= 50)

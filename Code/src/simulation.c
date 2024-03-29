@@ -456,6 +456,20 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             }
         }
 
+
+
+
+        printQueue(scheduler);
+
+
+
+
+
+        //! Context switching: variable pour servir de timer? et attendre la fin de ce timer pour mettre un autre process dedans
+        
+
+
+
         // TODO Check event (interrupt for CPU burst or IO burst) -> put on waiting queue or put process on ready queue
 
 

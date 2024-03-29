@@ -194,10 +194,10 @@ int main(int argc, const char *argv[])
     printStats(allStats);
     printf("-----------------------------------------\n");
 */
-    /* printf("----------------- Graph -----------------\n");
-    printGraph(graph);
+    printf("----------------- Graph -----------------\n");
+    //printGraph(graph);
     printf("-----------------------------------------\n");
- */
+
     freeGraph(graph);
     freeStats(allStats);
     freeWorkload(workload);

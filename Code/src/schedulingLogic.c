@@ -62,7 +62,7 @@ struct Scheduler_t
  * @return false 
  */
 static bool isInScheduler(Scheduler *scheduler, int pid);
-
+//TODO check waiting queue
 /* ---------------- static Queue functions  --------------- */
 static Queue *initQueue();
 
@@ -234,7 +234,6 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
-
 void addProcessToScheduler(Scheduler *scheduler, int pid)
 {
     if(!scheduler)
@@ -261,7 +260,6 @@ void scheduling(Scheduler *scheduler){
         return;
     }
 }
-
 
 void printQueue(Scheduler *scheduler)
 {
@@ -313,15 +311,6 @@ static bool isInScheduler(Scheduler *scheduler, int pid)
     return false;
 }
 
-static void fcfs(Queue *readyQueue)
-{
-    if (!readyQueue)
-    {
-        return;
-    }
-
-
-}
 /* ---------------- static Queue functions  --------------- */
 
 static Queue *initQueue()

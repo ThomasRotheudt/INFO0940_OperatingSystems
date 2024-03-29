@@ -15,6 +15,7 @@
 
 /* ----------------- static CPU functions  ---------------- */
 
+int getProcessFromCore(CPU *cpu, int indexProcess);
 
 /* ----------------- static Disk functions  --------------- */
 

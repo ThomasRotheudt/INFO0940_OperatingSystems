@@ -13,7 +13,8 @@
 
 #define NB_WAIT_QUEUES 1
 #define FIRST_QUEUE 0
-
+#define WAITING_QUEUE -1
+#define RUNNING_QUEUE -2
 /* --------------------------- struct definitions -------------------------- */
 
 /**
@@ -33,8 +34,9 @@ struct QueueNode_t
     PCB *data; // PID of the process in the node
     int indexReadyQueue; // The index of the queue in which the node is (use it when returns from waiting queue) 
     int age; // The time the process has spent in its current queue
-    int limit; // The execution time limit on the queue
+    int execTime; // The execution time limit on the queue
     QueueNode *nextNode;
+    QueueNode *prevNode;
 };
 
 struct Queue_t
@@ -59,68 +61,49 @@ struct Scheduler_t
 static bool isInScheduler(Scheduler *scheduler, int pid);
 
 /**
- * Move the process in the node from its current queue to the next one. It stays in its queue if it is the last queue of the scheduler.
- * 
- * @param scheduler: the scheduler
- * @param node: the node to move
+ * Moves a process from the waiting queue to a ready queue.
+ *
+ * @param scheduler The scheduler
+ * @param node The node containing the process to move.
  */
-static void moveProcessToNextQueue(Scheduler *scheduler, QueueNode *node);
+static void moveProcessFromWaitingQueue(Scheduler *scheduler, QueueNode *node);
 
 /**
- * Move the process in the node from its current queue to the previous one. It stays in its queue if it is the first queue of the scheduler.
- * 
- * @param scheduler 
- * @param node 
+ * Moves a process from the running queue to the waiting queue.
+ *
+ * @param scheduler The scheduler.
+ * @param node The node containing the process to move.
  */
-static void moveProcessToPreviousQueue(Scheduler *scheduler, QueueNode *node);
+static void moveProcessFromRunningQueue(Scheduler *scheduler, QueueNode *node);
 
-static void moveProcessToRunningQueue(Scheduler *scheduler, QueueNode *node);
+/**
+ * Moves a process from one ready queue to another, or to the running or waiting queue.
+ *
+ * @param scheduler The scheduler
+ * @param node The node containing the process to move.
+ * @param newQueue The destination queue.
+ */
+static void moveProcessFromReadyQueue(Scheduler *scheduler, QueueNode *node, Queue *newQueue);
 
-static void moveProcessToWaitingQueue(Scheduler *scheduler, QueueNode *node);
-
-/* ---------------- static Queue functions  --------------- */
+/* ---------------- static Init/free Queue functions  --------------- */
 static Queue *initQueue(int indexQueue);
+
+static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue, int age, int execTime);
 
 static void freeQueue(Queue *queue);
 
-static QueueNode *initQueueNode(PCB *data, int indexQueue, int age, int executionTime);
+static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue, int age, int execTime);
 
-/**
- * Add a new element to the tail of a ready queue
- * 
- * @param queue: the queue
- * @param data: the PCB of a process
- * @return 1 if the new PCB is enqueued, 0 if an error occurs
- */
-static int enqueue(Queue *queue, PCB *data, int age, int executionTime, int indexReadyQueue);
+/* ---------------- static Queue functions  ------------------------- */
 
-/**
- * Remove a specific process given its PID
- * 
- * @param queue: the queue
- * @param pid: the pid of the process
- * @return A PCB pointer to the removed element
- */
-static PCB *removeElement(Queue *queue, int pid);
+static int insertInQueue(Queue *queue, QueueNode *node);
 
-/**
- * Check if the queue is empty
- * 
- * @param queue: the queue 
- * @return true 
- * @return false 
- */
+static QueueNode *removeElement(Queue *queue, QueueNode *node);
+
+static bool isInQueue(Queue *queue, int pid);
+
 static bool isEmpty(Queue *queue);
 
-/**
- * Check if a process is in the queue given its PID
- * 
- * @param queue: the queue
- * @param pid: the pid of the process
- * @return true 
- * @return false 
- */
-static bool isInQueue(Queue *queue, int pid);
 /* -------------------------- getters and setters -------------------------- */
 
 int getWaitQueueCount(void)
@@ -178,7 +161,7 @@ Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQu
     }
 
     // Init of the running queue
-    scheduler->runningQueue = initQueue(0);
+    scheduler->runningQueue = initQueue(RUNNING_QUEUE);
     if(!scheduler->runningQueue)
     {
         // Freeing ready queues
@@ -200,8 +183,7 @@ Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQu
     }
 
     //Init of the wait queue
-    //! hardcode de l'index de la wait queue si jamais besoin de plusieurs voir ready queue
-    scheduler->waitingQueue = initQueue(0);
+    scheduler->waitingQueue = initQueue(WAITING_QUEUE);
     if(!scheduler->waitingQueue)
     {
         // Freeing ready queues
@@ -250,26 +232,21 @@ void freeScheduler(Scheduler *scheduler)
 
 void addProcessToScheduler(Scheduler *scheduler, PCB *data)
 {
-    if (!scheduler)
-    {
-        fprintf(stderr, "Error: The scheduler does not exists");
-        return;
-    }
-
     if(!isInScheduler(scheduler, data->pid))
     {
-        if (!enqueue(scheduler->readyQueue[FIRST_QUEUE], data, 0, 0, FIRST_QUEUE))
+        QueueNode *node = initQueueNode(data, FIRST_QUEUE, 0, 0);
+        if (!node)
         {
-            fprintf(stderr, "Error: The process cannot be added to the scheduler.");
+            fprintf(stderr, "Error: The new node can't be created.\n");
             return;
         }
-    }
-    return;
-}
 
-void testScheduling(Scheduler *scheduler)
-{
-    
+        if (!insertInQueue(scheduler->readyQueue[FIRST_QUEUE], node))
+        {
+            fprintf(stderr, "Error: Can't add the process to the scheduler");
+            return;
+        }   
+    }
 }
 
 void schedulingEvents(Scheduler *scheduler)
@@ -284,10 +261,10 @@ void schedulingEvents(Scheduler *scheduler)
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
         int ageLimit = scheduler->readyQueueAlgorithms[i]->ageLimit;
-        int executiontTimeLimit = scheduler->readyQueueAlgorithms[i]->executiontTimeLimit;
+        int executionTimeLimit = scheduler->readyQueueAlgorithms[i]->executiontTimeLimit;
 
         // If at least one of the limit exist (is greater than 0 and NO_LIMIT), we check the queue.
-        if ((ageLimit > 0 || executiontTimeLimit > 0) && (!isEmpty(scheduler->readyQueue[i])))
+        if ((ageLimit > 0 || executionTimeLimit > 0) && (!isEmpty(scheduler->readyQueue[i])))
         {
             // Check every process of the queue
             QueueNode *current = scheduler->readyQueue[i]->head;
@@ -296,16 +273,30 @@ void schedulingEvents(Scheduler *scheduler)
                 // If the age of the process is greater than the limit move the process to the previous queue
                 if (current->age >= ageLimit)
                 {
-                    moveProcessToPreviousQueue(scheduler, current);
+                    moveProcessFromReadyQueue(scheduler, current, scheduler->readyQueue[current->indexReadyQueue - 1]);
                 }
                 // If the execution time of the process is greater than the limit move the process to the next queue
-                else if (current->limit >= executiontTimeLimit)
+                else if (current->execTime >= executionTimeLimit)
                 {
-                    moveProcessToNextQueue(scheduler, current);
+                    moveProcessFromReadyQueue(scheduler, current, scheduler->readyQueue[current->indexReadyQueue + 1]);
                 }
+
+                //Update the age timer
+                current->age++;
 
                 current = current->nextNode;
             }
+        }
+    }
+
+    // Update the execution time timer of each running process if there is
+    if (!isEmpty(scheduler->runningQueue))
+    {
+        QueueNode *current = scheduler->runningQueue->head;
+        while (current)
+        {
+            current->execTime++;
+            current = current->nextNode;
         }
     }
 }
@@ -345,68 +336,120 @@ void printQueue(Scheduler *scheduler)
     printf("|----------------------------------------------|\n\n");
 }
 
+void scheduling(Scheduler *scheduler)
+{
+
+}
 /* ---------------------------- static functions --------------------------- */
 
 static bool isInScheduler(Scheduler *scheduler, int pid)
 {
-    if(!scheduler)
+    // Check if scheduler is not NULL
+    if (!scheduler)
     {
-        fprintf(stderr, "Error: The scheduler does not exists");
         return false;
     }
 
+    // Iterate over all ready queues
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
-        if(isInQueue(scheduler->readyQueue[i], pid))
+        if (isInQueue(scheduler->readyQueue[i], pid))
         {
             return true;
         }
     }
 
-    if(isInQueue(scheduler->waitingQueue, pid))
+    // Check the running queue
+    if (isInQueue(scheduler->runningQueue, pid))
     {
         return true;
     }
-    
+
+    // Check the waiting queue
+    if (isInQueue(scheduler->waitingQueue, pid))
+    {
+        return true;
+    }
+
+    // If we iterated over all queues without finding a match, return false
     return false;
 }
 
-static void moveProcessToNextQueue(Scheduler *scheduler, QueueNode *node)
+static void moveProcessFromReadyQueue(Scheduler *scheduler, QueueNode *node, Queue *newQueue)
 {
-    int indexNextQueue = node->indexReadyQueue++;
-    if(indexNextQueue >= scheduler->readyQueueCount - 1)
+    // Return if the destination queue is NULL or is the same as the current queue.
+    if (!newQueue || newQueue->index == node->indexReadyQueue)
     {
         return;
     }
 
-    PCB *data = removeElement(scheduler->readyQueue[node->indexReadyQueue], node->data->pid);
+    // Check if the process is in one of the ready queues.
+    bool isInReadyQueues = false;
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        if (isInQueue(scheduler->readyQueue[i], node->data->pid))
+        {
+            isInReadyQueues = true;
+            break; // We found the process in a ready queue, so we can stop searching.
+        }
+    }
 
-    enqueue(scheduler->readyQueue[indexNextQueue], data, 0, 0, indexNextQueue);
+    // If the process is in a ready queue, remove it and insert it into the destination queue.
+    if (isInReadyQueues)
+    {
+        QueueNode *newNode = removeElement(scheduler->readyQueue[node->indexReadyQueue], node);
+
+        // If the destination queue is the running or waiting queue, simply insert the process.
+        if (newQueue == scheduler->runningQueue || newQueue == scheduler->waitingQueue)
+        {
+            insertInQueue(newQueue, newNode);
+        }
+        // If the destination queue is another ready queue, update the process's index, age, and execTime.
+        else
+        {
+            newNode->indexReadyQueue = newQueue->index;
+            newNode->age = 0;
+            newNode->execTime = 0;
+            insertInQueue(newQueue, newNode);
+        }
+    }
 }
 
-static void moveProcessToPreviousQueue(Scheduler *scheduler, QueueNode *node)
+static void moveProcessFromWaitingQueue(Scheduler *scheduler, QueueNode *node)
 {
-    int indexPreviousQueue = node->indexReadyQueue - 1;
-    if (indexPreviousQueue <= 0)
+    if (!node)
     {
         return;
     }
-    
-    PCB *data = removeElement(scheduler->readyQueue[node->indexReadyQueue], node->data->pid);
 
-    enqueue(scheduler->readyQueue[indexPreviousQueue], data, 0, 0, indexPreviousQueue);
+    // Check if the process is in the waiting queue.
+    if (isInQueue(scheduler->waitingQueue, node->data->pid))
+    {
+        QueueNode *newNode = removeElement(scheduler->waitingQueue, node);
+
+        // Insert the process into the ready queue with the same index as before.
+        insertInQueue(scheduler->readyQueue[newNode->indexReadyQueue], newNode);
+    }
 }
-/* 
-static void moveProcessToRunningQueue(Scheduler *scheduler, QueueNode *node)
-{
 
+static void moveProcessFromRunningQueue(Scheduler *scheduler, QueueNode *node)
+{
+    if (!node)
+    {
+        return;
+    }
+
+    // Check if the process is in the running queue.
+    if (isInQueue(scheduler->runningQueue, node->data->pid))
+    {
+        QueueNode *newNode = removeElement(scheduler->runningQueue, node);
+
+        // Insert the process into the waiting queue.
+        insertInQueue(scheduler->waitingQueue, newNode);
+    }
 }
 
-static void moveProcessToWaitingQueue(Scheduler *scheduler, QueueNode *node)
-{
-
-} */
-/* ---------------- static Queue functions  --------------- */
+/* ---------------- static Init/free Queue functions  --------------- */
 
 static Queue *initQueue(int indexQueue)
 {
@@ -423,19 +466,20 @@ static Queue *initQueue(int indexQueue)
     return queue;
 }
 
-static QueueNode *initQueueNode(PCB *data, int indexQueue, int age, int executionTime)
+static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue, int age, int execTime)
 {
     QueueNode *queueNode = malloc(sizeof(QueueNode));
-    if(!queueNode)
+    if (!queueNode)
     {
         return NULL;
     }
 
-    queueNode->data = data;
+    queueNode->data = pcb;
     queueNode->age = age;
-    queueNode->limit = executionTime;
-    queueNode->indexReadyQueue = indexQueue;
+    queueNode->execTime = execTime;
+    queueNode->indexReadyQueue = indexReadyQueue;
     queueNode->nextNode = NULL;
+    queueNode->prevNode = NULL;
 
     return queueNode;
 }
@@ -458,100 +502,109 @@ static void freeQueue(Queue *queue)
     free(queue);
 }
 
-static int enqueue(Queue *queue, PCB *data, int age, int executionTime, int indexReadyQueue)
+/* ---------------- static Queue functions  ------------------------- */
+
+static int insertInQueue(Queue *queue, QueueNode *node)
 {
-    if(!queue)
+    // Check if queue and node are not NULL
+    if (!queue || !node)
     {
         return 0;
     }
 
-    QueueNode *queueNode = initQueueNode(data, indexReadyQueue, age, executionTime);
-    if(!queueNode)
+    // If the queue is empty, the new node becomes both the head and the tail
+    if (queue->head == NULL)
     {
-        return 0;
+        queue->head = node;
+        queue->tail = node;
     }
-
-    if(!queue->head)
-    {
-        queue->head = queueNode;
-        queue->tail = queueNode;
-    }
+    // If the queue is not empty, the new node is inserted at the end of the queue
     else
     {
-        queue->tail->nextNode = queueNode;
-        queue->tail = queueNode;
+        queue->tail->nextNode = node;
+        node->prevNode = queue->tail;
+        queue->tail = node;
     }
 
     return 1;
 }
 
-static PCB *removeElement(Queue *queue, int pid)
+static QueueNode *removeElement(Queue *queue, QueueNode *node)
 {
-    if (!queue)
+    // Check if queue and node are not NULL
+    if (!queue || !node)
     {
-        fprintf(stderr, "Error: The queue does not exists.");
         return NULL;
     }
 
-    QueueNode* current = queue->head;
-    QueueNode* previous = NULL;
-
-    while (current) 
+    // Check if the node to remove is in the queue
+    if (!isInQueue(queue, node->data->pid))
     {
-        if (current->data->pid == pid) 
-        {
-            if (!previous) 
-            {
-                queue->head = queue->head->nextNode;
-                if (queue->head == NULL) 
-                {
-                    queue->tail = NULL;
-                }
-            } 
-            else 
-            {
-                previous->nextNode = current->nextNode;
-                if (current == queue->tail) 
-                {
-                    queue->tail = previous;
-                }
-            }
-
-            PCB *data = current->data;
-            free(current);
-            return data;
-        }
-
-        previous = current;
-        current = current->nextNode;
+        return NULL;
     }
-    
-    return NULL;
-}
 
-static bool isEmpty(Queue *queue)
-{
-    return (!queue->head && !queue->tail) ? true : false;
+    // Check if the node is the head of the queue
+    if (node == queue->head)
+    {
+        queue->head = node->nextNode;
+    }
+    // Check if the node is the tail of the queue
+    else if (node == queue->tail)
+    {
+        queue->tail = node->prevNode;
+    }
+    else
+    {
+        node->prevNode->nextNode = node->nextNode;
+        node->nextNode->prevNode = node->prevNode;
+    }
+
+    // Set the nextNode and prevNode of the removed node to NULL
+    node->nextNode = NULL;
+    node->prevNode = NULL;
+
+    return node;
 }
 
 static bool isInQueue(Queue *queue, int pid)
 {
-    if(!queue)
+    // Check if queue is not NULL
+    if (!queue)
     {
-        fprintf(stderr, "Error: the queue does not exist.");
         return false;
     }
 
+    // Iterate over all nodes in the queue
     QueueNode *current = queue->head;
-    while (current)
+    while (current != NULL)
     {
+        // Check if the PID of the process in the node matches the given PID
         if (current->data->pid == pid)
         {
             return true;
         }
+
         current = current->nextNode;
     }
-    
+
+    // If we iterated over all nodes without finding a match, return false
     return false;
 }
 
+static bool isEmpty(Queue *queue)
+{
+    // Check if queue is not NULL
+    if (!queue)
+    {
+        return false;
+    }
+
+    // If the head of the queue is NULL, the queue is empty
+    if (queue->head == NULL)
+    {
+        return true;
+    }
+
+    // If the head of the queue is not NULL, the queue is not empty
+    return false;
+}

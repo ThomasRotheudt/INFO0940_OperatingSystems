@@ -37,10 +37,15 @@ void freeScheduler(Scheduler *scheduler);
  */
 void addProcessToScheduler(Scheduler *scheduler, PCB *data);
 
+/**
+ * Check all the process in the ready queues to see if a limit is reached, 
+ * if so move the process from queue accordingly to the limit that has been reached
+ * 
+ * @param scheduler: the scheduler
+ */
 void schedulingEvents(Scheduler *scheduler);
 
-void testScheduling(Scheduler *scheduler);
-
+void scheduling(Scheduler *scheduler);
 void printQueue(Scheduler *scheduler);
 
 #endif // schedulingLogic_h

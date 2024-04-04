@@ -172,7 +172,7 @@ int getProcessNextEventTime(Workload *workload, int pid)
 
 int getProcessCurEventTimeLeft(Workload *workload, int pid)
 {
-    return getProcessNextEventTime(workload, pid)
+    return getProcessNextEventTime(workload, pid) 
            - getProcessAdvancementTime(workload, pid);
 }
 
@@ -213,6 +213,23 @@ static void setProcessAdvancementTime(Workload *workload, int pid, int advanceme
     }
 }
 
+static void setProcessNextEvent(Workload *workload, int pid)
+{
+    for (int i = 0; i < workload->nbProcesses; i++)
+    {
+        if (getPIDFromWorkload(workload, i) == pid)
+        {
+            ProcessSimulationInfo *processInfo = workload->processesInfo[i];
+            ProcessEvent *current = workload->processesInfo[i]->nextEvent;
+            if(current)
+            {
+                processInfo->nextEvent = current->nextEvent;
+                free(current);
+                break;
+            }
+        }
+    }
+}
 
 /* -------------------------- init/free functions -------------------------- */
 
@@ -441,63 +458,70 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
 
     int time = 0;
 
-    printf("Number of core: %d\nNumber of processes: %d\n", cpu->coreCount, workload->nbProcesses);
-
     /* Main loop of the simulation.*/
-    while (!workloadOver(workload)) // You probably want to change this condition
+    while (true) // You probably want to change this condition
     {      
-        // Check if a new process must be add to the scheduler
         for (int i = 0; i < workload->nbProcesses; i++)
         {
-            int pid = getPIDFromWorkload(workload, i);
-            if (time >= getProcessStartTime(workload, pid) && workload->processesInfo[i]->pcb->state == READY)
+            ProcessSimulationInfo *process = workload->processesInfo[i];
+            if (time >= getProcessStartTime(workload, getPIDFromWorkload(workload, i)))
             {
-                addProcessToScheduler(scheduler, pid);
+                PCB *pcb = process->pcb;
+                addProcessToScheduler(scheduler, pcb);
             }
         }
 
 
 
-
-        printQueue(scheduler);
-
-
-
-
-
-        //! Context switching: variable pour servir de timer? et attendre la fin de ce timer pour mettre un autre process dedans
-        
-
-
-
-        // TODO Check event (interrupt for CPU burst or IO burst) -> put on waiting queue or put process on ready queue
-
-
-        // TODO Check for scheduling event -> update the state of age, limit execution, ect. update queue of process which must move of queue
-
-
-        // TODO put process on ressources if possible
-
-        if(time == 20)
-            scheduling(scheduler);
-        //printQueue(scheduler);
-
-
-        // Add process to graph
+        /* printf("Time unit: %d\n", time);
         for (int i = 0; i < workload->nbProcesses; i++)
         {
-            int pid = getPIDFromWorkload(workload, i);
-            if(time >= getProcessStartTime(workload, pid))
+            if(getProcessState(workload, getPIDFromWorkload(workload, i)) != TERMINATED)
             {
-                addProcessEventToGraph(graph, pid, time, workload->processesInfo[i]->pcb->state, 0);
+                printf("Process PID: %d --- Next event: ", getPIDFromWorkload(workload, i));
+                if(workload->processesInfo[i]->nextEvent)
+                {
+                    if (workload->processesInfo[i]->nextEvent->type == CPU_BURST)
+                    {
+                        printf("CPU Burst ");
+                    }
+                    else
+                    {
+                        printf("I/O Burst ");
+                    }
+
+                    printf("at %d time advancement of the process\n", getProcessNextEventTime(workload, getPIDFromWorkload(workload, i)));
+                }
+                else
+                {
+                    printf("End of the process at %d time advancment of the process.\n", getProcessNextEventTime(workload, getPIDFromWorkload(workload, i)));
+                }
             }
         }
+        printf("\n\n");
+
+        for (int i = 0; i < workload->nbProcesses; i++)
+        {
+            if(getProcessAdvancementTime(workload, getPIDFromWorkload(workload, i)) == getProcessDuration(workload, getPIDFromWorkload(workload, i)))
+            {
+                setProcessState(workload, getPIDFromWorkload(workload, i), TERMINATED);
+            }
+
+            if(getProcessAdvancementTime(workload, getPIDFromWorkload(workload, i)) == getProcessNextEventTime(workload, getPIDFromWorkload(workload, i)))
+            {
+                setProcessNextEvent(workload, getPIDFromWorkload(workload, i));
+            }
+
+            setProcessAdvancementTime(workload, getPIDFromWorkload(workload, i), getProcessAdvancementTime(workload, getPIDFromWorkload(workload, i))+1);
+        } */
+
 
         time++;
         if(time >= 50)
             break;
     }
-
+    testScheduling(scheduler);
+    printQueue(scheduler);
     freeComputer(computer);
 }
 

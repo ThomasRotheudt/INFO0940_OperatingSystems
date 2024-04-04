@@ -20,23 +20,10 @@ int getProcessFromCore(CPU *cpu, int indexProcess);
 /* ----------------- static Disk functions  --------------- */
 
 
-
 /* -------------------------- getters and setters -------------------------- */
 
 /* ----------------- static CPU functions  ---------------- */
 
-void setProcessToCore(CPU *cpu, int indexCore, int pid)
-{
-    if(!cpu)
-    {
-        return;
-    }
-
-    Core *core = cpu->cores[indexCore];
-
-    core->pid = pid;
-    core->state = WORKING;
-}
 
 /* ----------------- static Disk functions  --------------- */
 
@@ -94,6 +81,9 @@ CPU *initCPU(int coreCount)
             return NULL;
         }
         cpu->cores[i]->state = IDLE;
+        cpu->cores[i]->contextSwitchTimer = 0;
+        //No process at initialisation
+        cpu->cores[i]->pid = -1; 
     }
 
     cpu->coreCount = coreCount;
@@ -129,4 +119,4 @@ void freeDisk(Disk *disk)
     free(disk);
 }
 
-/* ---------------------------- static functions --------------------------- */
+/* --------------------------functions implementation--------------------------- */

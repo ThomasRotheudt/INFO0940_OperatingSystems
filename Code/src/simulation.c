@@ -461,16 +461,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     /* Main loop of the simulation.*/
     while (true) // You probably want to change this condition
     {      
-        for (int i = 0; i < workload->nbProcesses; i++)
-        {
-            ProcessSimulationInfo *process = workload->processesInfo[i];
-            if (time >= getProcessStartTime(workload, getPIDFromWorkload(workload, i)))
-            {
-                PCB *pcb = process->pcb;
-                addProcessToScheduler(scheduler, pcb);
-            }
-        }
-
+        
 
 
         /* printf("Time unit: %d\n", time);
@@ -520,13 +511,51 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         if(time >= 50)
             break;
     }
-    testScheduling(scheduler);
+    scheduling(scheduler);
     printQueue(scheduler);
     freeComputer(computer);
 }
 
 
 /* ---------------------------- static functions --------------------------- */
+
+static void checkEvents(Scheduler *scheduler, CPU *cpu, Workload *workload, int time)
+{
+    if (!scheduler || !cpu)
+    {
+        fprintf(stderr, "The scheduler or the cpu does not exist");
+        return;
+    }
+
+    // Check if new processes can be add to the scheduler
+    for (int i = 0; i < workload->nbProcesses; i++)
+    {
+        ProcessSimulationInfo *process = workload->processesInfo[i];
+        if (time >= getProcessStartTime(workload, getPIDFromWorkload(workload, i)))
+        {
+            PCB *pcb = process->pcb;
+            addProcessToScheduler(scheduler, pcb);
+        }
+    }
+
+    // Check process events that runs on cpu
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+        if (core->state == WORKING)
+        {
+            if (getProcessAdvancementTime(workload, core->pid) == getProcessNextEventTime(workload, core->pid))
+            {
+                setProcessNextEvent(workload, core->pid);
+            }
+        }
+    }
+
+    // Check process events that runs on disk if not idle
+
+    // Check scheduling events
+
+}
 
 static bool workloadOver(const Workload *workload)
 {

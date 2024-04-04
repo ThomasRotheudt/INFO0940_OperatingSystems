@@ -280,23 +280,8 @@ void schedulingEvents(Scheduler *scheduler)
                 {
                     moveProcessFromReadyQueue(scheduler, current, scheduler->readyQueue[current->indexReadyQueue + 1]);
                 }
-
-                //Update the age timer
-                current->age++;
-
                 current = current->nextNode;
             }
-        }
-    }
-
-    // Update the execution time timer of each running process if there is
-    if (!isEmpty(scheduler->runningQueue))
-    {
-        QueueNode *current = scheduler->runningQueue->head;
-        while (current)
-        {
-            current->execTime++;
-            current = current->nextNode;
         }
     }
 }

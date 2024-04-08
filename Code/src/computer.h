@@ -29,7 +29,10 @@ struct Computer_t
 typedef enum
 {
     IDLE,
-    WORKING
+    WORKING,
+    CONTEXT_SWITCHING_IN,
+    CONTEXT_SWITCHING_OUT,
+    INTERRUPT
 } coreState;
 
 struct CPU_t
@@ -42,7 +45,7 @@ struct CPU_t
 struct Core_t
 {
     int pid;
-    int contextSwitchTimer;
+    int timer;
     coreState state;
 };
 
@@ -52,6 +55,7 @@ struct Core_t
 struct Disk_t
 {
     bool isIdle;
+    int pid;
 };
 
 /* ------------------------- function definitions -------------------------
@@ -64,17 +68,6 @@ void freeComputer(Computer *computer);
 
 CPU *initCPU(int coreCount);
 void freeCPU(CPU *cpu);
-
-//!-------------------------------------------------------------------------------//
-//TODO handle the interrupts in the simulation
-/*The cpu check if a process on the cores have an IO interrupt if so 
-put this process on the disk (if idle) remove it from the core and put it in the waiting queue. 
-
-If the disk has finished the IO operation trigger a flag and remove the process from the wait queue
-put the process at the beginning of the ready queue in which it was (thanks to the node of the waiting queue)
-*/
-void interruptHandler(Workload* Workload,CPU *cpu, Scheduler *scheduler, Disk *disk);
-//!-------------------------------------------------------------------------------//
 
 Disk *initDisk(void);
 void freeDisk(Disk *disk);

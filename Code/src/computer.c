@@ -13,21 +13,6 @@
 
 /* ---------------------------- static functions --------------------------- */
 
-/* ----------------- static CPU functions  ---------------- */
-
-int getProcessFromCore(CPU *cpu, int indexProcess);
-
-/* ----------------- static Disk functions  --------------- */
-
-
-/* -------------------------- getters and setters -------------------------- */
-
-/* ----------------- static CPU functions  ---------------- */
-
-
-/* ----------------- static Disk functions  --------------- */
-
-
 
 /* -------------------------- init/free functions -------------------------- */
 
@@ -81,7 +66,7 @@ CPU *initCPU(int coreCount)
             return NULL;
         }
         cpu->cores[i]->state = IDLE;
-        cpu->cores[i]->contextSwitchTimer = 0;
+        cpu->cores[i]->timer = 0;
         //No process at initialisation
         cpu->cores[i]->pid = -1; 
     }
@@ -110,6 +95,8 @@ Disk *initDisk(void)
     }
 
     disk->isIdle = true;
+    // No process at initialisation
+    disk->pid = -1;
 
     return disk;
 }

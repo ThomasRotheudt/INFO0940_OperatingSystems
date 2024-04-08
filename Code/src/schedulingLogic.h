@@ -21,6 +21,8 @@ typedef struct Scheduler_t Scheduler;
 
 int getWaitQueueCount(void);
 
+
+
 /* -------------------------- init/free functions -------------------------- */
 
 Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQueueCount);
@@ -35,7 +37,15 @@ void freeScheduler(Scheduler *scheduler);
  * @param scheduler: the scheduler
  * @param pid: the pid of the new process
  */
-void addProcessToScheduler(Scheduler *scheduler, PCB *data);
+void addProcessToReadyQueue(Scheduler *scheduler, PCB *data);
+
+/**
+ * Add a process to the waiting queue of the scheduler given its pcb
+ * 
+ * @param scheduler: the scheduler
+ * @param pid: the pid of the process
+ */
+void addProcessToWaitingQueue(Scheduler *scheduler, int pid);
 
 /**
  * Check all the process in the ready queues to see if a limit is reached, 
@@ -45,7 +55,20 @@ void addProcessToScheduler(Scheduler *scheduler, PCB *data);
  */
 void schedulingEvents(Scheduler *scheduler);
 
-void scheduling(Scheduler *scheduler);
+/**
+ * return the pid of the process with the highest priority in the scheduler
+ * 
+ * @param scheduler: the scheduler
+ * @return the pid of the process with the highest priority
+ */
+int scheduling(Scheduler *scheduler);
+
+void setProcessToCore(Computer *computer, int indexCore, int pid);
+
+void updateSchedulingValue(Scheduler *scheduler);
+
+void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
+
 void printQueue(Scheduler *scheduler);
 
 #endif // schedulingLogic_h

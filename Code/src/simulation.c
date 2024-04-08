@@ -221,6 +221,18 @@ static int getProcessIndex(Workload *workload, int pid)
     return processIndex;
 }
 
+static ProcessEventType getProcessNextEventType(Workload *workload, int pid)
+{
+    for (int i = 0; i < workload->nbProcesses; i++)
+    {
+        if (getPIDFromWorkload(workload, i) == pid)
+        {
+            return workload->processesInfo[i]->nextEvent->type;
+        }
+    }
+    return -1;
+}
+
 static void setProcessAdvancementTime(Workload *workload, int pid, int advancementTime)
 {
     for (int i = 0; i < workload->nbProcesses; i++)
@@ -481,7 +493,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     /* Main loop of the simulation.*/
     while (true) // You probably want to change this condition
     {      
-        //printQueue(computer->scheduler);
+    printQueue(computer->scheduler);
     printf("|----------CPU----------|\n");
     for (int i = 0; i < cpu->coreCount; i++)
     {
@@ -509,6 +521,13 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         assigningRessources(computer, workload);
 
         updateValue(computer, workload);
+
+
+        for (int i = 0; i < workload->nbProcesses; i++)
+        {
+            addProcessEventToGraph(graph, getPIDFromWorkload(workload, i), time, getProcessState(workload, getPIDFromWorkload(workload, i)), 0);
+        }
+        
         
         time++;
         if(time >= 50)
@@ -566,14 +585,15 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             {
                 //Remove process from scheduler (in running queue)
                 removeProcessFromScheduler(computer, pid, i);
+
                 // Set the new state of the process
                 setProcessState(workload, pid, TERMINATED);
             }
         }
+
     }
 
-
-    // Check for the end of context switch
+    // Check for the end of context switch or interrupt
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
@@ -594,32 +614,49 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
         }
     }
 
-    /* // Check process events that runs on cpu
+    // Check process events that runs on cpu
     for (int i = 0; i < cpu->coreCount; i++)
     {
-        // Get the core and process in special variables
         Core *core = cpu->cores[i];
-        ProcessSimulationInfo *process = workload->processesInfo[getProcessIndex(workload, core->pid)];
 
-        // If the current core is running a process check for I/O Burst event
+        if (core->state == CONTEXT_SWITCHING_IN && core->timer == 0)
+        {
+            core->state = WORKING;
+            setProcessState(workload, core->pid, RUNNING);
+        }
+        else if (core->state == CONTEXT_SWITCHING_OUT && core->timer == 0)
+        {
+            core->state = IDLE;
+        }
+        else if (core->state == INTERRUPT && core->timer == 0)
+        {
+            core->state = WORKING;
+            setProcessState(workload, core->pid, RUNNING);
+        }
+        
         if (core->state == WORKING)
         {
-            // If the advancement of the process corresponds to the next event (which is an I/O Burst event) handle it
-            if ((getProcessAdvancementTime(workload, core->pid) == getProcessNextEventTime(workload, core->pid)) && process->nextEvent->type == IO_BURST)
+            int pid = core->pid;
+            int advancementTime = getProcessAdvancementTime(workload, pid);
+            int nextEventTime = getProcessNextEventTime(workload, pid);
+
+            if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == IO_BURST)
             {
                 // Add the process to the waiting queue
-                addProcessToWaitingQueue(scheduler, core->pid);
+                addProcessToWaitingQueue(scheduler, pid);
                 // Set the context switch out of the core
                 core->timer = SWITCH_OUT_DURATION;
                 // Set the state of the core to context switching out
                 core->state = CONTEXT_SWITCHING_OUT;
+                //Remove the pid from the core
+                core->pid = -1;
                 // Update the next event of the process in the workload
-                setProcessNextEvent(workload, core->pid);
+                setProcessNextEvent(workload, pid);
                 // Update the state of the proces to WAITING
-                setProcessState(workload, core->pid, WAITING);
+                setProcessState(workload, pid, WAITING);
             }
         }
-    } */
+    }
 }
 
 static void assigningRessources(Computer *computer, Workload *workload)
@@ -641,7 +678,10 @@ static void assigningRessources(Computer *computer, Workload *workload)
         if (core->state == IDLE)
         {
             int pid = scheduling(scheduler);
-            setProcessToCore(computer, i, pid);
+            if (pid != -1)
+            {
+                setProcessToCore(computer, i, pid);
+            }
         }
     }
 }

@@ -102,6 +102,8 @@ static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue, int age, int exec
 
 static int insertInQueue(Queue *queue, QueueNode *node);
 
+static QueueNode *searchInQueue(Queue *queue, int pid);
+
 static QueueNode *removeElement(Queue *queue, QueueNode *node);
 
 static bool isInQueue(Queue *queue, int pid);
@@ -261,11 +263,11 @@ void addProcessToWaitingQueue(Scheduler *scheduler, int pid)
         fprintf(stderr, "Error: The scheduler does not exists.\n");
         return;
     }
-
-    QueueNode *node = searchProcessInScheduler(scheduler, pid);
+    
+    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
     if (node)
     {
-        moveProcessFromReadyQueue(scheduler, node, scheduler->waitingQueue);
+        moveProcessFromRunningQueue(scheduler, node);
     }
 }
 
@@ -383,11 +385,6 @@ void setProcessToCore(Computer *computer, int indexCore, int pid)
     }
 }
 
-void updateSchedulingValue(Scheduler *scheduler)
-{
-
-}
-
 void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
 {
     if (!computer)
@@ -401,9 +398,9 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
 
     if (isInQueue(scheduler->runningQueue, pid))
     {
-        QueueNode *node = searchProcessInScheduler(scheduler, pid);
-        free(removeElement(scheduler->runningQueue, node));
-
+        QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
+        node = removeElement(scheduler->runningQueue, node);
+        free(node);
     }
 
     Core *core = cpu->cores[indexCore];
@@ -457,38 +454,28 @@ static QueueNode *searchProcessInScheduler(Scheduler *scheduler, int pid)
     // Search the process in the ready queues
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
-        QueueNode *node = scheduler->readyQueue[i]->head;
-        while (node)
+        QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
+        if (node)
         {
-            if (node->data->pid == pid)
-            {
-                return node;
-            }
-            node = node->nextNode;
+            return node;
         }
     }
 
     // Search the process in the running queue
-    QueueNode *node = scheduler->runningQueue->head;
-    while (node)
+    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
+    if (node)
     {
-        if (node->data->pid == pid)
-        {
-            return node;
-        }
-        node = node->nextNode;
+        return node;
     }
+    
 
     // Search the process in the waiting queue
-    node = scheduler->waitingQueue->head;
-    while (node)
+    node = searchInQueue(scheduler->waitingQueue, pid);
+    if (node)
     {
-        if (node->data->pid == pid)
-        {
-            return node;
-        }
-        node = node->nextNode;
+        return node;
     }
+    
 
     // The process is not found
     return NULL;
@@ -622,7 +609,7 @@ static void freeQueue(Queue *queue)
     {
         return;
     }
-
+    
     QueueNode *current = queue->head;
     while (current)
     {
@@ -679,11 +666,19 @@ static QueueNode *removeElement(Queue *queue, QueueNode *node)
     if (node == queue->head)
     {
         queue->head = node->nextNode;
+        if (queue->head) // Check if the queue is not empty after removing the head
+            queue->head->prevNode = NULL;
+        else // The queue is now empty, set the tail to NULL
+            queue->tail = NULL;
     }
     // Check if the node is the tail of the queue
     else if (node == queue->tail)
     {
         queue->tail = node->prevNode;
+        if (queue->tail) // Check if the queue is not empty after removing the tail
+            queue->tail->nextNode = NULL;
+        else // The queue is now empty, set the head to NULL
+            queue->head = NULL;
     }
     else
     {
@@ -739,4 +734,25 @@ static bool queueIsEmpty(Queue *queue)
 
     // If the head of the queue is not NULL, the queue is not empty
     return false;
+}
+
+static QueueNode *searchInQueue(Queue *queue, int pid)
+{
+    if (!queue)
+    {
+        return;
+    }
+    
+    QueueNode *current = queue->head;
+
+    while (current)
+    {
+        if (current->data->pid == pid)
+        {
+            return current;
+        }
+        current = current->nextNode;
+    }
+
+    return NULL;
 }

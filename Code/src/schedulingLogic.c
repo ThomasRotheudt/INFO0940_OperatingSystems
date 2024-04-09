@@ -58,45 +58,17 @@ struct Scheduler_t
 
 /* ---------------------------- static functions --------------------------- */
 
-static bool isInScheduler(Scheduler *scheduler, int pid);
-
 static bool schedulerIsEmpty(Scheduler *scheduler);
 
-static QueueNode *searchProcessInScheduler(Scheduler *scheduler, int pid);
-
-/**
- * Moves a process from the waiting queue to a ready queue.
- *
- * @param scheduler The scheduler
- * @param node The node containing the process to move.
- */
-static void moveProcessFromWaitingQueue(Scheduler *scheduler, QueueNode *node);
-
-/**
- * Moves a process from the running queue to the waiting queue.
- *
- * @param scheduler The scheduler.
- * @param node The node containing the process to move.
- */
-static void moveProcessFromRunningQueue(Scheduler *scheduler, QueueNode *node);
-
-/**
- * Moves a process from one ready queue to another, or to the running or waiting queue.
- *
- * @param scheduler The scheduler
- * @param node The node containing the process to move.
- * @param newQueue The destination queue.
- */
-static void moveProcessFromReadyQueue(Scheduler *scheduler, QueueNode *node, Queue *newQueue);
+static bool isInScheduler(Scheduler *scheduler, int pid);
 
 /* ---------------- static Init/free Queue functions  --------------- */
+
 static Queue *initQueue(int indexQueue);
 
 static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue, int age, int execTime);
 
 static void freeQueue(Queue *queue);
-
-static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue, int age, int execTime);
 
 /* ---------------- static Queue functions  ------------------------- */
 
@@ -114,7 +86,6 @@ int getWaitQueueCount(void)
 {
     return NB_WAIT_QUEUES;
 }
-
 
 /* -------------------------- init/free functions -------------------------- */
 
@@ -235,22 +206,23 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
-void addProcessToReadyQueue(Scheduler *scheduler, PCB *data)
+void addProcessToScheduler(Scheduler *scheduler, PCB *data)
 {
-    if(!isInScheduler(scheduler, data->pid))
+    if (!scheduler)
     {
-        QueueNode *node = initQueueNode(data, FIRST_QUEUE, 0, 0);
-        if (!node)
+        return;
+    }
+
+    if (!isInScheduler(scheduler, data->pid))
+    {
+        QueueNode *newNode = initQueueNode(data, FIRST_QUEUE, 0, 0);
+        if (!newNode)
         {
             fprintf(stderr, "Error: The new node can't be created.\n");
             return;
         }
 
-        if (!insertInQueue(scheduler->readyQueue[FIRST_QUEUE], node))
-        {
-            fprintf(stderr, "Error: Can't add the process to the scheduler");
-            return;
-        }   
+        insertInQueue(scheduler->readyQueue[newNode->indexReadyQueue], newNode);
     }
 }
 
@@ -258,15 +230,57 @@ void addProcessToWaitingQueue(Scheduler *scheduler, int pid)
 {
     if (!scheduler)
     {
-        fprintf(stderr, "Error: The scheduler does not exists.\n");
+        fprintf(stderr, "Error: The scheduler does not exist.\n");
         return;
     }
-    
+
     QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
     if (node)
     {
-        moveProcessFromRunningQueue(scheduler, node);
+        node = removeElement(scheduler->runningQueue, node);
+        insertInQueue(scheduler->waitingQueue, node);
     }
+}
+
+void returnFromWaitQueue(Scheduler *scheduler, int pid)
+{
+    if (!scheduler)
+    {
+        fprintf(stderr, "Error: The scheduler does not exist.\n");
+        return;
+    }
+
+    QueueNode *node = searchInQueue(scheduler->waitingQueue, pid);
+    if (node)
+    {
+        node = removeElement(scheduler->waitingQueue, node);
+        insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
+    }
+
+    return;
+}
+
+void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    CPU *cpu = computer->cpu;
+
+    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
+    if (node)
+    {
+        node = removeElement(scheduler->runningQueue, node);
+        free(node);
+    }
+
+    Core *core = cpu->cores[indexCore];
+    core->pid = -1;
+    core->state = IDLE;
 }
 
 void schedulingEvents(Scheduler *scheduler)
@@ -276,33 +290,75 @@ void schedulingEvents(Scheduler *scheduler)
         fprintf(stderr, "Error: The scheduler does not exists.\n");
         return;
     }
+}
 
-    // Check the limits of each process
+int scheduling(Scheduler *scheduler)
+{
+    if (!scheduler)
+    {
+        fprintf(stderr, "Error: The scheduler does not exist.\n");
+        return -1;
+    }
+
+    if (schedulerIsEmpty(scheduler))
+    {
+        return -1;
+    }
+    
+    
+
+    return scheduler->readyQueue[FIRST_QUEUE]->head->data->pid;
+}
+
+void setProcessToCore(Computer *computer, int indexCore, int pid)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    if (pid == -1)
+    {
+        return;
+    }
+    
+    Scheduler *scheduler = computer->scheduler;
+    Core *core = computer->cpu->cores[indexCore];
+
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
-        int ageLimit = scheduler->readyQueueAlgorithms[i]->ageLimit;
-        int executionTimeLimit = scheduler->readyQueueAlgorithms[i]->executiontTimeLimit;
-
-        // If at least one of the limit exist (is greater than 0 and NO_LIMIT), we check the queue.
-        if ((ageLimit > 0 || executionTimeLimit > 0) && (!queueIsEmpty(scheduler->readyQueue[i])))
+        QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
+        if (node)
         {
-            // Check every process of the queue
-            QueueNode *current = scheduler->readyQueue[i]->head;
-            while (current)
+            if (core->state == IDLE)
             {
-                // If the age of the process is greater than the limit move the process to the previous queue
-                if (current->age >= ageLimit)
-                {
-                    moveProcessFromReadyQueue(scheduler, current, scheduler->readyQueue[current->indexReadyQueue - 1]);
-                }
-                // If the execution time of the process is greater than the limit move the process to the next queue
-                else if (current->execTime >= executionTimeLimit)
-                {
-                    moveProcessFromReadyQueue(scheduler, current, scheduler->readyQueue[current->indexReadyQueue + 1]);
-                }
-                current = current->nextNode;
+                node = removeElement(scheduler->readyQueue[i], node);
+                insertInQueue(scheduler->runningQueue, node);
+                core->pid = pid;
+                core->state = CONTEXT_SWITCHING_IN;
+                core->timer = SWITCH_IN_DURATION;
             }
         }
+    }
+}
+
+void setProcessToDisk(Computer *computer)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    Disk *disk = computer->disk;
+
+    if (!queueIsEmpty(scheduler->waitingQueue))
+    {
+        QueueNode *node = scheduler->waitingQueue->head;
+        disk->isIdle = false;
+        disk->pid = node->data->pid;
     }
 }
 
@@ -341,181 +397,7 @@ void printQueue(Scheduler *scheduler)
     printf("|----------------------------------------------|\n\n");
 }
 
-int scheduling(Scheduler *scheduler)
-{
-    if (!scheduler)
-    {
-        fprintf(stderr, "Error: The scheduler does not exist.\n");
-        return -1;
-    }
-
-    if (schedulerIsEmpty(scheduler))
-    {
-        return -1;
-    }
-    
-    
-
-    return scheduler->readyQueue[FIRST_QUEUE]->head->data->pid;
-}
-
-void setProcessToCore(Computer *computer, int indexCore, int pid)
-{
-    if (!computer)
-    {
-        fprintf(stderr, "Error: The computer does not exist.\n");
-        return;
-    }
-
-    if (pid == -1)
-    {
-        return;
-    }
-    
-    Core *core = computer->cpu->cores[indexCore];
-    QueueNode *node = searchProcessInScheduler(computer->scheduler, pid);
-    if (node)
-    {
-        if (core->state == IDLE)
-        {
-            moveProcessFromReadyQueue(computer->scheduler, node, computer->scheduler->runningQueue);
-            core->pid = pid;
-            core->state = CONTEXT_SWITCHING_IN;
-            core->timer = SWITCH_IN_DURATION;
-        }
-    }
-}
-
-void setProcessToDisk(Computer *computer)
-{
-    if (!computer)
-    {
-        fprintf(stderr, "Error: The computer does not exist.\n");
-        return;
-    }
-
-    Scheduler *scheduler = computer->scheduler;
-    Disk *disk = computer->disk;
-
-    if (!queueIsEmpty(scheduler->waitingQueue))
-    {
-        QueueNode *node = scheduler->waitingQueue->head;
-        disk->isIdle = false;
-        disk->pid = node->data->pid;
-    }
-}
-
-void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
-{
-    if (!computer)
-    {
-        return
-        fprintf(stderr, "Error: The computer does not exist.\n");
-    }
-
-    Scheduler *scheduler = computer->scheduler;
-    CPU *cpu = computer->cpu;
-
-    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
-    if (node)
-    {
-        node = removeElement(scheduler->runningQueue, node);
-        free(node);
-    }
-
-    Core *core = cpu->cores[indexCore];
-    core->pid = -1;
-    core->state = IDLE;
-}
-
-void returnFromWaitingQueue(Scheduler *scheduler, int pid)
-{
-    if (!scheduler)
-    {
-        return;
-    }
-
-    QueueNode *node = searchInQueue(scheduler->waitingQueue, pid);
-    if (node)
-    {
-        node = removeElement(scheduler->waitingQueue, node);
-        insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
-    }
-}
 /* ---------------------------- static functions --------------------------- */
-
-static bool isInScheduler(Scheduler *scheduler, int pid)
-{
-    // Check if scheduler is not NULL
-    if (!scheduler)
-    {
-        return false;
-    }
-
-    // Iterate over all ready queues
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
-        if (node)
-        {
-            return true;
-        }
-    }
-
-    // Check the running queue
-    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
-    if (node)
-    {
-        return true;
-    }
-
-    QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
-    if (node)
-    {
-        return true;
-    }
-
-    // If we iterated over all queues without finding a match, return false
-    return false;
-}
-
-static QueueNode *searchProcessInScheduler(Scheduler *scheduler, int pid)
-{
-    // check if scheduler is not null
-    if (!scheduler)
-    {
-        return NULL;
-    }
-
-    // Search the process in the ready queues
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
-        if (node)
-        {
-            return node;
-        }
-    }
-
-    // Search the process in the running queue
-    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
-    if (node)
-    {
-        return node;
-    }
-    
-
-    // Search the process in the waiting queue
-    node = searchInQueue(scheduler->waitingQueue, pid);
-    if (node)
-    {
-        return node;
-    }
-    
-
-    // The process is not found
-    return NULL;
-}
 
 static bool schedulerIsEmpty(Scheduler *scheduler)
 {
@@ -528,6 +410,39 @@ static bool schedulerIsEmpty(Scheduler *scheduler)
     }
 
     return true;
+}
+
+static bool isInScheduler(Scheduler *scheduler, int pid)
+{
+    // Check if scheduler is not NULL
+    if (!scheduler)
+    {
+        return false;
+    }
+
+    // Iterate over all ready queues
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        if (searchInQueue(scheduler->readyQueue[i], pid))
+        {
+            return true;
+        }
+    }
+
+    // Check the running queue
+    if (searchInQueue(scheduler->runningQueue, pid))
+    {
+        return true;
+    }
+
+    // Check the wait queue
+    if (searchInQueue(scheduler->waitingQueue, pid))
+    {
+        return true;
+    }
+
+    // If we iterated over all queues without finding a match, return false
+    return false;
 }
 
 /* ---------------- static Init/free Queue functions  --------------- */
@@ -677,7 +592,7 @@ static QueueNode *searchInQueue(Queue *queue, int pid)
 {
     if (!queue)
     {
-        return;
+        return NULL;
     }
     
     QueueNode *current = queue->head;

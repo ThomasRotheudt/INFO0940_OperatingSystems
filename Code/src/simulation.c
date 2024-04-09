@@ -518,9 +518,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
 
         checkEvents(computer, workload, time);
         assigningRessources(computer, workload);
-
         updateValue(computer, workload);
-
 
         for (int i = 0; i < workload->nbProcesses; i++)
         {
@@ -563,12 +561,13 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
         if (time == startTime)
         {
             PCB *pcb = process->pcb;
-            addProcessToReadyQueue(scheduler, pcb);
+            addProcessToScheduler(scheduler, pcb);
 
             // skip the event (0, CPU) as the process is in the ready queue
             setProcessNextEvent(workload, pcb->pid);
         }
     }
+
 
     // Check if a process on a core is terminated
     for (int i = 0; i < cpu->coreCount; i++)

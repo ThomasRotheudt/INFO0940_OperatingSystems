@@ -37,7 +37,7 @@ void freeScheduler(Scheduler *scheduler);
  * @param scheduler: the scheduler
  * @param pid: the pid of the new process
  */
-void addProcessToReadyQueue(Scheduler *scheduler, PCB *data);
+void addProcessToScheduler(Scheduler *scheduler, PCB *data);
 
 /**
  * Add a process to the waiting queue of the scheduler given its pcb
@@ -71,7 +71,7 @@ void updateSchedulingValue(Scheduler *scheduler);
 
 void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
 
-void returnFromWaitingQueue(Scheduler *scheduler, int pid);
+void returnFromWaitQueue(Scheduler *scheduler, int pid);
 
 void printQueue(Scheduler *scheduler);
 

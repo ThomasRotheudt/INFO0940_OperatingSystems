@@ -10,6 +10,8 @@
 #define SWITCH_OUT_DURATION 2 // Duration of the context switch out
 #define SWITCH_IN_DURATION 1  // Duration of the context switch in
 
+#define FIRST_CORE 0 // The core that will be interrupted
+
 typedef struct CPU_t CPU;
 typedef struct Core_t Core;
 typedef struct Disk_t Disk;
@@ -46,7 +48,9 @@ struct Core_t
 {
     int pid;
     int timer;
+    int previousTimer;
     coreState state;
+    coreState previousState;
 };
 
 
@@ -71,6 +75,13 @@ void freeCPU(CPU *cpu);
 
 Disk *initDisk(void);
 void freeDisk(Disk *disk);
+
+/**
+ * Handle the trigger of an intterupt by the disk
+ * 
+ * @param computer: the compute (scheduler, cpu, disk)
+ */
+void interruptHandler(Computer *computer);
 
 
 

@@ -11,6 +11,7 @@
 
 #define INTERRUPT_TIME 1
 
+
 /* ---------------------------- static functions --------------------------- */
 
 
@@ -66,7 +67,9 @@ CPU *initCPU(int coreCount)
             return NULL;
         }
         cpu->cores[i]->state = IDLE;
+        cpu->cores[i]->previousState = IDLE; 
         cpu->cores[i]->timer = 0;
+        cpu->cores[i]->previousTimer = 0;
         //No process at initialisation
         cpu->cores[i]->pid = -1; 
     }
@@ -107,3 +110,27 @@ void freeDisk(Disk *disk)
 }
 
 /* --------------------------functions implementation--------------------------- */
+
+void interruptHandler(Computer *computer)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    Disk *disk = computer->disk;
+    CPU *cpu = computer->cpu;
+
+    Core *interruptedCore = cpu->cores[FIRST_CORE];
+    
+    //? refaire????
+
+    interruptedCore->previousState = interruptedCore->state;
+    interruptedCore->state = INTERRUPT;
+
+    interruptedCore->previousTimer = interruptedCore->timer;
+    interruptedCore->timer = INTERRUPT_TIME;
+    
+}

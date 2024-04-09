@@ -491,8 +491,9 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     int time = 0;
 
     /* Main loop of the simulation.*/
-    while (true) // You probably want to change this condition
+    while (!workloadOver(workload)) // You probably want to change this condition
     {      
+    printf("Time: %d\n", time);
     printQueue(computer->scheduler);
     printf("|----------CPU----------|\n");
     for (int i = 0; i < cpu->coreCount; i++)
@@ -510,12 +511,10 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         {
             printf("   Core is working\n");
         }
-        printf("\n");
     }
-    /* printf("|-----------------------|\n");
     printf("|----------DISK---------|\n");
     printf("    DISK: |PID: %d|\n", disk->pid);
-    printf("|-----------------------|\n\n"); */
+    printf("|-----------------------|\n\n");
 
         checkEvents(computer, workload, time);
         assigningRessources(computer, workload);
@@ -525,7 +524,10 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
 
         for (int i = 0; i < workload->nbProcesses; i++)
         {
-            addProcessEventToGraph(graph, getPIDFromWorkload(workload, i), time, getProcessState(workload, getPIDFromWorkload(workload, i)), 0);
+            int pid = getPIDFromWorkload(workload, i);
+            ProcessState state = getProcessState(workload, pid);
+            addProcessEventToGraph(graph, pid, time, state, 0);
+            addDiskEventToGraph(graph, pid, time, state == WAITING ? DISK_RUNNING : DISK_IDLE);
         }
         
         
@@ -597,43 +599,32 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
+        if (core->timer == 0)
+        {
+            switch (core->state)
+            {
+                case CONTEXT_SWITCHING_IN:
+                    core->state = WORKING;
+                    setProcessState(workload, core->pid, RUNNING);
+                    break;
 
-        if (core->state == CONTEXT_SWITCHING_IN && core->timer == 0)
-        {
-            core->state = WORKING;
-            setProcessState(workload, core->pid, RUNNING);
-        }
-        else if (core->state == CONTEXT_SWITCHING_OUT && core->timer == 0)
-        {
-            core->state = IDLE;
-        }
-        else if (core->state == INTERRUPT && core->timer == 0)
-        {
-            core->state = WORKING;
-            setProcessState(workload, core->pid, RUNNING);
+                case CONTEXT_SWITCHING_OUT:
+                    core->state = IDLE;
+                    break;
+                    
+                case INTERRUPT:
+                    //TODO
+                    break;
+
+                default:
+                    break;
+            }
         }
     }
-
     // Check process events that runs on cpu
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
-
-        if (core->state == CONTEXT_SWITCHING_IN && core->timer == 0)
-        {
-            core->state = WORKING;
-            setProcessState(workload, core->pid, RUNNING);
-        }
-        else if (core->state == CONTEXT_SWITCHING_OUT && core->timer == 0)
-        {
-            core->state = IDLE;
-        }
-        else if (core->state == INTERRUPT && core->timer == 0)
-        {
-            core->state = WORKING;
-            setProcessState(workload, core->pid, RUNNING);
-        }
-        
         if (core->state == WORKING)
         {
             int pid = core->pid;
@@ -657,6 +648,20 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             }
         }
     }
+
+    // Check process events that runs on disk
+
+    if (!disk->isIdle)
+    {
+        int pid = disk->pid;
+        int advancementTime = getProcessAdvancementTime(workload, pid);
+        int nextEventTime = getProcessNextEventTime(workload, pid);
+
+        if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == CPU_BURST)
+        {
+            //TODO
+        }
+    }
 }
 
 static void assigningRessources(Computer *computer, Workload *workload)
@@ -678,11 +683,13 @@ static void assigningRessources(Computer *computer, Workload *workload)
         if (core->state == IDLE)
         {
             int pid = scheduling(scheduler);
-            if (pid != -1)
-            {
-                setProcessToCore(computer, i, pid);
-            }
+            setProcessToCore(computer, i, pid);
         }
+    }
+
+    if (disk->isIdle)
+    {
+        setProcessToDisk(computer);
     }
 }
 

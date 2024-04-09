@@ -65,9 +65,13 @@ int scheduling(Scheduler *scheduler);
 
 void setProcessToCore(Computer *computer, int indexCore, int pid);
 
+void setProcessToDisk(Computer *computer);
+
 void updateSchedulingValue(Scheduler *scheduler);
 
 void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
+
+void returnFromWaitingQueue(Scheduler *scheduler, int pid);
 
 void printQueue(Scheduler *scheduler);
 

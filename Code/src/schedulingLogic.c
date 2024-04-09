@@ -106,8 +106,6 @@ static QueueNode *searchInQueue(Queue *queue, int pid);
 
 static QueueNode *removeElement(Queue *queue, QueueNode *node);
 
-static bool isInQueue(Queue *queue, int pid);
-
 static bool queueIsEmpty(Queue *queue);
 
 /* -------------------------- getters and setters -------------------------- */
@@ -369,19 +367,41 @@ void setProcessToCore(Computer *computer, int indexCore, int pid)
         return;
     }
 
-    Core *core = computer->cpu->cores[indexCore];
-    QueueNode *node = searchProcessInScheduler(computer->scheduler, pid);
-    if (!node)
+    if (pid == -1)
     {
         return;
     }
     
-    if (core->state == IDLE)
+    Core *core = computer->cpu->cores[indexCore];
+    QueueNode *node = searchProcessInScheduler(computer->scheduler, pid);
+    if (node)
     {
-        moveProcessFromReadyQueue(computer->scheduler, node, computer->scheduler->runningQueue);
-        core->pid = pid;
-        core->state = CONTEXT_SWITCHING_IN;
-        core->timer = SWITCH_IN_DURATION;
+        if (core->state == IDLE)
+        {
+            moveProcessFromReadyQueue(computer->scheduler, node, computer->scheduler->runningQueue);
+            core->pid = pid;
+            core->state = CONTEXT_SWITCHING_IN;
+            core->timer = SWITCH_IN_DURATION;
+        }
+    }
+}
+
+void setProcessToDisk(Computer *computer)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    Disk *disk = computer->disk;
+
+    if (!queueIsEmpty(scheduler->waitingQueue))
+    {
+        QueueNode *node = scheduler->waitingQueue->head;
+        disk->isIdle = false;
+        disk->pid = node->data->pid;
     }
 }
 
@@ -396,9 +416,9 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
     Scheduler *scheduler = computer->scheduler;
     CPU *cpu = computer->cpu;
 
-    if (isInQueue(scheduler->runningQueue, pid))
+    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
+    if (node)
     {
-        QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
         node = removeElement(scheduler->runningQueue, node);
         free(node);
     }
@@ -408,6 +428,20 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
     core->state = IDLE;
 }
 
+void returnFromWaitingQueue(Scheduler *scheduler, int pid)
+{
+    if (!scheduler)
+    {
+        return;
+    }
+
+    QueueNode *node = searchInQueue(scheduler->waitingQueue, pid);
+    if (node)
+    {
+        node = removeElement(scheduler->waitingQueue, node);
+        insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
+    }
+}
 /* ---------------------------- static functions --------------------------- */
 
 static bool isInScheduler(Scheduler *scheduler, int pid)
@@ -421,20 +455,22 @@ static bool isInScheduler(Scheduler *scheduler, int pid)
     // Iterate over all ready queues
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
-        if (isInQueue(scheduler->readyQueue[i], pid))
+        QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
+        if (node)
         {
             return true;
         }
     }
 
     // Check the running queue
-    if (isInQueue(scheduler->runningQueue, pid))
+    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
+    if (node)
     {
         return true;
     }
 
-    // Check the waiting queue
-    if (isInQueue(scheduler->waitingQueue, pid))
+    QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
+    if (node)
     {
         return true;
     }
@@ -492,80 +528,6 @@ static bool schedulerIsEmpty(Scheduler *scheduler)
     }
 
     return true;
-}
-
-static void moveProcessFromReadyQueue(Scheduler *scheduler, QueueNode *node, Queue *newQueue)
-{
-    // Return if the destination queue is NULL or is the same as the current queue.
-    if (!newQueue || newQueue->index == node->indexReadyQueue)
-    {
-        return;
-    }
-
-    // Check if the process is in one of the ready queues.
-    bool isInReadyQueues = false;
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        if (isInQueue(scheduler->readyQueue[i], node->data->pid))
-        {
-            isInReadyQueues = true;
-            break; // We found the process in a ready queue, so we can stop searching.
-        }
-    }
-
-    // If the process is in a ready queue, remove it and insert it into the destination queue.
-    if (isInReadyQueues)
-    {
-        QueueNode *newNode = removeElement(scheduler->readyQueue[node->indexReadyQueue], node);
-
-        // If the destination queue is the running or waiting queue, simply insert the process.
-        if (newQueue == scheduler->runningQueue || newQueue == scheduler->waitingQueue)
-        {
-            insertInQueue(newQueue, newNode);
-        }
-        // If the destination queue is another ready queue, update the process's index, age, and execTime.
-        else
-        {
-            newNode->indexReadyQueue = newQueue->index;
-            newNode->age = 0;
-            newNode->execTime = 0;
-            insertInQueue(newQueue, newNode);
-        }
-    }
-}
-
-static void moveProcessFromWaitingQueue(Scheduler *scheduler, QueueNode *node)
-{
-    if (!node)
-    {
-        return;
-    }
-
-    // Check if the process is in the waiting queue.
-    if (isInQueue(scheduler->waitingQueue, node->data->pid))
-    {
-        QueueNode *newNode = removeElement(scheduler->waitingQueue, node);
-
-        // Insert the process into the ready queue with the same index as before.
-        insertInQueue(scheduler->readyQueue[newNode->indexReadyQueue], newNode);
-    }
-}
-
-static void moveProcessFromRunningQueue(Scheduler *scheduler, QueueNode *node)
-{
-    if (!node)
-    {
-        return;
-    }
-
-    // Check if the process is in the running queue.
-    if (isInQueue(scheduler->runningQueue, node->data->pid))
-    {
-        QueueNode *newNode = removeElement(scheduler->runningQueue, node);
-
-        // Insert the process into the waiting queue.
-        insertInQueue(scheduler->waitingQueue, newNode);
-    }
 }
 
 /* ---------------- static Init/free Queue functions  --------------- */
@@ -657,7 +619,7 @@ static QueueNode *removeElement(Queue *queue, QueueNode *node)
     }
 
     // Check if the node to remove is in the queue
-    if (!isInQueue(queue, node->data->pid))
+    if (!searchInQueue(queue, node->data->pid))
     {
         return NULL;
     }
@@ -691,31 +653,6 @@ static QueueNode *removeElement(Queue *queue, QueueNode *node)
     node->prevNode = NULL;
 
     return node;
-}
-
-static bool isInQueue(Queue *queue, int pid)
-{
-    // Check if queue is not NULL
-    if (!queue)
-    {
-        return false;
-    }
-
-    // Iterate over all nodes in the queue
-    QueueNode *current = queue->head;
-    while (current != NULL)
-    {
-        // Check if the PID of the process in the node matches the given PID
-        if (current->data->pid == pid)
-        {
-            return true;
-        }
-
-        current = current->nextNode;
-    }
-
-    // If we iterated over all nodes without finding a match, return false
-    return false;
 }
 
 static bool queueIsEmpty(Queue *queue)

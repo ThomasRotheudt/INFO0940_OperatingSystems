@@ -58,6 +58,7 @@ struct Core_t
 
 struct Disk_t
 {
+    bool isFree;
     bool isIdle;
     int pid;
 };

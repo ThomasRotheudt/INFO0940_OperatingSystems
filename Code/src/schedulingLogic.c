@@ -206,6 +206,8 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
+/* ------------------- Change Process of Queue -------------------- */
+
 void addProcessToScheduler(Scheduler *scheduler, PCB *data)
 {
     if (!scheduler)
@@ -283,6 +285,8 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
     core->state = IDLE;
 }
 
+/* -------------------- Event & Update values --------------------- */
+
 void schedulingEvents(Scheduler *scheduler)
 {
     if (!scheduler)
@@ -291,6 +295,8 @@ void schedulingEvents(Scheduler *scheduler)
         return;
     }
 }
+
+/* --------------------- Assign Ressources ------------------------ */
 
 int scheduling(Scheduler *scheduler)
 {
@@ -358,9 +364,12 @@ void setProcessToDisk(Computer *computer)
     {
         QueueNode *node = scheduler->waitingQueue->head;
         disk->isIdle = false;
+        disk->isFree = false;
         disk->pid = node->data->pid;
     }
 }
+
+
 
 void printQueue(Scheduler *scheduler)
 {

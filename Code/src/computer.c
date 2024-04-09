@@ -100,6 +100,7 @@ Disk *initDisk(void)
     disk->isIdle = true;
     // No process at initialisation
     disk->pid = -1;
+    disk->isFree = true;
 
     return disk;
 }
@@ -124,8 +125,8 @@ void interruptHandler(Computer *computer)
     CPU *cpu = computer->cpu;
 
     Core *interruptedCore = cpu->cores[FIRST_CORE];
-    
-    //? refaire????
+
+    disk->isIdle = true;
 
     interruptedCore->previousState = interruptedCore->state;
     interruptedCore->state = INTERRUPT;

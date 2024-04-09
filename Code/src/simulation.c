@@ -591,7 +591,6 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
                 setProcessState(workload, pid, TERMINATED);
             }
         }
-
     }
 
     // Check for the end of context switch or interrupt
@@ -612,7 +611,20 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
                     break;
                     
                 case INTERRUPT:
-                    //TODO
+                    Core *interruptedCore = cpu->cores[FIRST_CORE];
+                    int pid = disk->pid;
+                    
+                    disk->isFree = true;
+                    disk->pid = -1;
+                    setProcessState(workload, pid, READY);
+                    returnFromWaitQueue(scheduler, pid);
+
+                    interruptedCore->state = interruptedCore->previousState;
+                    interruptedCore->timer = interruptedCore->previousTimer;
+                    if (interruptedCore->state == WORKING)
+                    {
+                        setProcessState(workload, interruptedCore->pid, RUNNING);
+                    }
                     break;
 
                 default:
@@ -634,16 +646,17 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             {
                 // Add the process to the waiting queue
                 addProcessToWaitingQueue(scheduler, pid);
+                // Update the next event of the process in the workload
+                setProcessNextEvent(workload, pid);
+                // Update the state of the proces to WAITING
+                setProcessState(workload, pid, WAITING);
+
                 // Set the context switch out of the core
                 core->timer = SWITCH_OUT_DURATION;
                 // Set the state of the core to context switching out
                 core->state = CONTEXT_SWITCHING_OUT;
                 //Remove the pid from the core
                 core->pid = -1;
-                // Update the next event of the process in the workload
-                setProcessNextEvent(workload, pid);
-                // Update the state of the proces to WAITING
-                setProcessState(workload, pid, WAITING);
             }
         }
     }
@@ -656,9 +669,16 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
         int advancementTime = getProcessAdvancementTime(workload, pid);
         int nextEventTime = getProcessNextEventTime(workload, pid);
 
+        
+
         if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == CPU_BURST)
         {
-            //TODO
+            Core *interruptedCore = cpu->cores[FIRST_CORE];
+            if (interruptedCore->state == WORKING)
+            {
+                setProcessState(workload, interruptedCore->pid, READY);
+            }
+            interruptHandler(computer);
         }
     }
 }
@@ -686,7 +706,7 @@ static void assigningRessources(Computer *computer, Workload *workload)
         }
     }
 
-    if (disk->isIdle)
+    if (disk->isFree)
     {
         setProcessToDisk(computer);
     }

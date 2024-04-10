@@ -74,6 +74,7 @@ CPU *initCPU(int coreCount)
         cpu->cores[i]->pid = -1; 
     }
 
+    cpu->nbrOfSwitchOut;
     cpu->coreCount = coreCount;
 
     return cpu;
@@ -120,7 +121,6 @@ void interruptHandler(Computer *computer)
         return;
     }
 
-    Scheduler *scheduler = computer->scheduler;
     Disk *disk = computer->disk;
     CPU *cpu = computer->cpu;
 

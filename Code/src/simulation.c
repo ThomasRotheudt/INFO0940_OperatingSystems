@@ -105,9 +105,8 @@ static void checkEvents(Computer *computer, Workload *workload, int time);
  * Assign processes to ressources if possible thanks to the scheduling of the processes
  * 
  * @param computer: all composant of the computer (scheduler, cpu, and disk)
- * @param workload: the workload
  */
-static void assigningRessources(Computer *computer, Workload *workload);
+static void assigningRessources(Computer *computer);
 
 static void updateValue(Computer *computer, Workload *workload);
 
@@ -493,45 +492,58 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     /* Main loop of the simulation.*/
     while (!workloadOver(workload)) // You probably want to change this condition
     {      
-    printf("Time: %d\n", time);
-    printQueue(computer->scheduler);
-    printf("|----------CPU----------|\n");
-    for (int i = 0; i < cpu->coreCount; i++)
-    {
-        printf("   CPU %d: |PID: %d|\n", i, cpu->cores[i]->pid);
-        if (cpu->cores[i]->state == CONTEXT_SWITCHING_IN)
+        printf("Time: %d\n", time);
+        printQueue(computer->scheduler);
+        printf("|----------CPU----------|\n");
+        for (int i = 0; i < cpu->coreCount; i++)
         {
-            printf("   Core on switching in\n");
+            printf("   CPU %d: |PID: %d|\n", i, cpu->cores[i]->pid);
+            if (cpu->cores[i]->state == CONTEXT_SWITCHING_IN)
+            {
+                printf("   Core on switching in\n");
+            }
+            else if (cpu->cores[i]->state == CONTEXT_SWITCHING_OUT)
+            {
+                printf("   Core on switching out\n");
+            }
+            else if (cpu->cores[i]->state == WORKING)
+            {
+                printf("   Core is working\n");
+            }
         }
-        else if (cpu->cores[i]->state == CONTEXT_SWITCHING_OUT)
-        {
-            printf("   Core on switching out\n");
-        }
-        else if (cpu->cores[i]->state == WORKING)
-        {
-            printf("   Core is working\n");
-        }
-    }
-    printf("|----------DISK---------|\n");
-    printf("    DISK: |PID: %d|\n", disk->pid);
-    printf("|-----------------------|\n\n");
+        printf("|----------DISK---------|\n");
+        printf("    DISK: |PID: %d|\n", disk->pid);
+        printf("|-----------------------|\n\n");
 
         checkEvents(computer, workload, time);
-        assigningRessources(computer, workload);
+        assigningRessources(computer);
         updateValue(computer, workload);
 
         for (int i = 0; i < workload->nbProcesses; i++)
         {
             int pid = getPIDFromWorkload(workload, i);
-            ProcessState state = getProcessState(workload, pid);
-            addProcessEventToGraph(graph, pid, time, state, 0);
-            addDiskEventToGraph(graph, pid, time, state == WAITING ? DISK_RUNNING : DISK_IDLE);
+            if (time >= getProcessStartTime(workload, pid))
+            {
+                ProcessState state = getProcessState(workload, pid);
+                if (state == RUNNING)
+                {
+                    for (int i = 0; i < cpu->coreCount; i++)
+                    {
+                        Core *core = cpu->cores[i];
+                        if (pid == core->pid)
+                        {
+                            addProcessEventToGraph(graph, pid, time, state, i);
+                        }
+                    }
+                }
+                else
+                {
+                    addProcessEventToGraph(graph, pid, time, state, 0);
+                }
+            }
         }
-        
-        
+
         time++;
-        if(time >= 50)
-            break;
     }
     freeComputer(computer);
 }
@@ -568,7 +580,6 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
         }
     }
 
-
     // Check if a process on a core is terminated
     for (int i = 0; i < cpu->coreCount; i++)
     {
@@ -580,8 +591,6 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             int processDuration = getProcessDuration(workload, pid);
             int advancementTime = getProcessAdvancementTime(workload, pid);
 
-            printf("Process advancement time: %d\nProcess duration: %d\n\n", advancementTime, processDuration);
-
             if(processDuration <= advancementTime)
             {
                 //Remove process from scheduler (in running queue)
@@ -592,6 +601,9 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             }
         }
     }
+
+    // Check scheduling events
+    schedulingEvents(scheduler, computer, workload);
 
     // Check for the end of context switch or interrupt
     for (int i = 0; i < cpu->coreCount; i++)
@@ -611,19 +623,16 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
                     break;
                     
                 case INTERRUPT:
-                    Core *interruptedCore = cpu->cores[FIRST_CORE];
-                    int pid = disk->pid;
-                    
+                    setProcessState(workload, disk->pid, READY);
+                    returnFromWaitQueue(scheduler, disk->pid);
                     disk->isFree = true;
                     disk->pid = -1;
-                    setProcessState(workload, pid, READY);
-                    returnFromWaitQueue(scheduler, pid);
 
-                    interruptedCore->state = interruptedCore->previousState;
-                    interruptedCore->timer = interruptedCore->previousTimer;
-                    if (interruptedCore->state == WORKING)
+                    cpu->cores[FIRST_CORE]->state = cpu->cores[FIRST_CORE]->previousState;
+                    cpu->cores[FIRST_CORE]->timer = cpu->cores[FIRST_CORE]->previousTimer;
+                    if (cpu->cores[FIRST_CORE]->state == WORKING)
                     {
-                        setProcessState(workload, interruptedCore->pid, RUNNING);
+                        setProcessState(workload, cpu->cores[FIRST_CORE]->pid, RUNNING);
                     }
                     break;
 
@@ -632,6 +641,10 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             }
         }
     }
+
+    // Check for preemption
+    preemption(computer, workload);
+
     // Check process events that runs on cpu
     for (int i = 0; i < cpu->coreCount; i++)
     {
@@ -662,14 +675,13 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     }
 
     // Check process events that runs on disk
-
     if (!disk->isIdle)
     {
         int pid = disk->pid;
         int advancementTime = getProcessAdvancementTime(workload, pid);
         int nextEventTime = getProcessNextEventTime(workload, pid);
 
-        
+
 
         if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == CPU_BURST)
         {
@@ -683,7 +695,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     }
 }
 
-static void assigningRessources(Computer *computer, Workload *workload)
+static void assigningRessources(Computer *computer)
 {
     if (!computer)
     {
@@ -711,7 +723,6 @@ static void assigningRessources(Computer *computer, Workload *workload)
         setProcessToDisk(computer);
     }
 }
-
 
 static void updateValue(Computer *computer, Workload *workload)
 {
@@ -741,7 +752,7 @@ static void updateValue(Computer *computer, Workload *workload)
     }
 
     //Update value in scheduler
-    //updateSchedulingValue(scheduler);
+    updateSchedulingValue(scheduler, workload);
 
     // Update value on disk
     if (!disk->isIdle)

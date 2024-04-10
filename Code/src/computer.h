@@ -41,6 +41,7 @@ struct CPU_t
 {
     // list of cores
     Core **cores;
+    int nbrOfSwitchOut;
     int coreCount;
 };
 

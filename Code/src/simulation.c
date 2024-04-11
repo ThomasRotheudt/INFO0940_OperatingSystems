@@ -91,6 +91,26 @@ static void setProcessAdvancementTime(Workload *workload, int pid, int advanceme
  */
 static bool workloadOver(const Workload *workload);
 
+/**
+ * Check all possible events of the simultation. If a new process must be add to the scheduler, if a process has an IO event at the current time on a core
+ * or on the disk for the CPU event (trigger an interrupt in that case), and finally check the scheduling events. 
+ * 
+ * @param computer: all composant of the computer (scheduler, cpu, and disk)
+ * @param workload: the workload
+ * @param time: the current time unit of the simulation
+ */
+static void checkEvents(Computer *computer, Workload *workload, int time);
+
+/**
+ * Assign processes to ressources if possible thanks to the scheduling of the processes
+ * 
+ * @param computer: all composant of the computer (scheduler, cpu, and disk)
+ * @param workload: the workload
+ */
+static void assigningRessources(Computer *computer, Workload *workload);
+
+static void updateValue(Computer *computer, Workload *workload);
+
 static void addAllProcessesToStats(AllStats *stats, Workload *workload);
 
 /**
@@ -172,7 +192,7 @@ int getProcessNextEventTime(Workload *workload, int pid)
 
 int getProcessCurEventTimeLeft(Workload *workload, int pid)
 {
-    return getProcessNextEventTime(workload, pid)
+    return getProcessNextEventTime(workload, pid) 
            - getProcessAdvancementTime(workload, pid);
 }
 
@@ -201,6 +221,18 @@ static int getProcessIndex(Workload *workload, int pid)
     return processIndex;
 }
 
+static ProcessEventType getProcessNextEventType(Workload *workload, int pid)
+{
+    for (int i = 0; i < workload->nbProcesses; i++)
+    {
+        if (getPIDFromWorkload(workload, i) == pid)
+        {
+            return workload->processesInfo[i]->nextEvent->type;
+        }
+    }
+    return -1;
+}
+
 static void setProcessAdvancementTime(Workload *workload, int pid, int advancementTime)
 {
     for (int i = 0; i < workload->nbProcesses; i++)
@@ -213,6 +245,23 @@ static void setProcessAdvancementTime(Workload *workload, int pid, int advanceme
     }
 }
 
+static void setProcessNextEvent(Workload *workload, int pid)
+{
+    for (int i = 0; i < workload->nbProcesses; i++)
+    {
+        if (getPIDFromWorkload(workload, i) == pid)
+        {
+            ProcessSimulationInfo *processInfo = workload->processesInfo[i];
+            ProcessEvent *current = workload->processesInfo[i]->nextEvent;
+            if(current)
+            {
+                processInfo->nextEvent = current->nextEvent;
+                free(current);
+                break;
+            }
+        }
+    }
+}
 
 /* -------------------------- init/free functions -------------------------- */
 
@@ -441,68 +490,246 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
 
     int time = 0;
 
-    printf("Number of core: %d\nNumber of processes: %d\n", cpu->coreCount, workload->nbProcesses);
-
     /* Main loop of the simulation.*/
     while (!workloadOver(workload)) // You probably want to change this condition
     {      
-        // Check if a new process must be add to the scheduler
+    printf("Time: %d\n", time);
+    printQueue(computer->scheduler);
+    printf("|----------CPU----------|\n");
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        printf("   CPU %d: |PID: %d|\n", i, cpu->cores[i]->pid);
+        if (cpu->cores[i]->state == CONTEXT_SWITCHING_IN)
+        {
+            printf("   Core on switching in\n");
+        }
+        else if (cpu->cores[i]->state == CONTEXT_SWITCHING_OUT)
+        {
+            printf("   Core on switching out\n");
+        }
+        else if (cpu->cores[i]->state == WORKING)
+        {
+            printf("   Core is working\n");
+        }
+    }
+    printf("|----------DISK---------|\n");
+    printf("    DISK: |PID: %d|\n", disk->pid);
+    printf("|-----------------------|\n\n");
+
+        checkEvents(computer, workload, time);
+        assigningRessources(computer, workload);
+        updateValue(computer, workload);
+
         for (int i = 0; i < workload->nbProcesses; i++)
         {
             int pid = getPIDFromWorkload(workload, i);
-            if (time >= getProcessStartTime(workload, pid) && workload->processesInfo[i]->pcb->state == READY)
-            {
-                addProcessToScheduler(scheduler, pid);
-            }
+            ProcessState state = getProcessState(workload, pid);
+            addProcessEventToGraph(graph, pid, time, state, 0);
+            addDiskEventToGraph(graph, pid, time, state == WAITING ? DISK_RUNNING : DISK_IDLE);
         }
-
-
-
-
-        printQueue(scheduler);
-
-
-
-
-
-        //! Context switching: variable pour servir de timer? et attendre la fin de ce timer pour mettre un autre process dedans
         
-
-
-
-        // TODO Check event (interrupt for CPU burst or IO burst) -> put on waiting queue or put process on ready queue
-
-
-        // TODO Check for scheduling event -> update the state of age, limit execution, ect. update queue of process which must move of queue
-
-
-        // TODO put process on ressources if possible
-
-        if(time == 20)
-            scheduling(scheduler);
-        //printQueue(scheduler);
-
-
-        // Add process to graph
-        for (int i = 0; i < workload->nbProcesses; i++)
-        {
-            int pid = getPIDFromWorkload(workload, i);
-            if(time >= getProcessStartTime(workload, pid))
-            {
-                addProcessEventToGraph(graph, pid, time, workload->processesInfo[i]->pcb->state, 0);
-            }
-        }
-
+        
         time++;
         if(time >= 50)
             break;
     }
-
     freeComputer(computer);
 }
 
 
 /* ---------------------------- static functions --------------------------- */
+
+static void checkEvents(Computer *computer, Workload *workload, int time)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    CPU *cpu = computer->cpu;
+    Disk *disk = computer->disk;
+
+    // Check if new processes can be add to the scheduler
+    for (int i = 0; i < workload->nbProcesses; i++)
+    {
+        ProcessSimulationInfo *process = workload->processesInfo[i];
+        int pid = getPIDFromWorkload(workload, i);
+        int startTime = getProcessStartTime(workload, pid);
+
+        if (time == startTime)
+        {
+            PCB *pcb = process->pcb;
+            addProcessToScheduler(scheduler, pcb);
+
+            // skip the event (0, CPU) as the process is in the ready queue
+            setProcessNextEvent(workload, pcb->pid);
+        }
+    }
+
+
+    // Check if a process on a core is terminated
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+
+        if (core->state == WORKING)
+        {
+            int pid = core->pid;
+            int processDuration = getProcessDuration(workload, pid);
+            int advancementTime = getProcessAdvancementTime(workload, pid);
+
+            printf("Process advancement time: %d\nProcess duration: %d\n\n", advancementTime, processDuration);
+
+            if(processDuration <= advancementTime)
+            {
+                //Remove process from scheduler (in running queue)
+                removeProcessFromScheduler(computer, pid, i);
+
+                // Set the new state of the process
+                setProcessState(workload, pid, TERMINATED);
+            }
+        }
+
+    }
+
+    // Check for the end of context switch or interrupt
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+        if (core->timer == 0)
+        {
+            switch (core->state)
+            {
+                case CONTEXT_SWITCHING_IN:
+                    core->state = WORKING;
+                    setProcessState(workload, core->pid, RUNNING);
+                    break;
+
+                case CONTEXT_SWITCHING_OUT:
+                    core->state = IDLE;
+                    break;
+                    
+                case INTERRUPT:
+                    //TODO
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+    // Check process events that runs on cpu
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+        if (core->state == WORKING)
+        {
+            int pid = core->pid;
+            int advancementTime = getProcessAdvancementTime(workload, pid);
+            int nextEventTime = getProcessNextEventTime(workload, pid);
+
+            if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == IO_BURST)
+            {
+                // Add the process to the waiting queue
+                addProcessToWaitingQueue(scheduler, pid);
+                // Set the context switch out of the core
+                core->timer = SWITCH_OUT_DURATION;
+                // Set the state of the core to context switching out
+                core->state = CONTEXT_SWITCHING_OUT;
+                //Remove the pid from the core
+                core->pid = -1;
+                // Update the next event of the process in the workload
+                setProcessNextEvent(workload, pid);
+                // Update the state of the proces to WAITING
+                setProcessState(workload, pid, WAITING);
+            }
+        }
+    }
+
+    // Check process events that runs on disk
+
+    if (!disk->isIdle)
+    {
+        int pid = disk->pid;
+        int advancementTime = getProcessAdvancementTime(workload, pid);
+        int nextEventTime = getProcessNextEventTime(workload, pid);
+
+        if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == CPU_BURST)
+        {
+            //TODO
+        }
+    }
+}
+
+static void assigningRessources(Computer *computer, Workload *workload)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    CPU *cpu = computer->cpu;
+    Disk *disk = computer->disk;
+
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+
+        if (core->state == IDLE)
+        {
+            int pid = scheduling(scheduler);
+            setProcessToCore(computer, i, pid);
+        }
+    }
+
+    if (disk->isIdle)
+    {
+        setProcessToDisk(computer);
+    }
+}
+
+
+static void updateValue(Computer *computer, Workload *workload)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    CPU *cpu = computer->cpu;
+    Disk *disk = computer->disk;
+
+    // Update value on CPU
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+        if (core->timer > 0)
+        {
+            core->timer--;
+        }
+        else if (core->state == WORKING)
+        {
+            int previousAdvancement = getProcessAdvancementTime(workload, core->pid);
+            setProcessAdvancementTime(workload, core->pid, previousAdvancement + 1);
+        }
+    }
+
+    //Update value in scheduler
+    //updateSchedulingValue(scheduler);
+
+    // Update value on disk
+    if (!disk->isIdle)
+    {
+        int previousAdvancement = getProcessAdvancementTime(workload, disk->pid);
+        setProcessAdvancementTime(workload, disk->pid, previousAdvancement + 1);
+    }
+}
 
 static bool workloadOver(const Workload *workload)
 {

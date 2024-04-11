@@ -10,6 +10,8 @@
 #define SWITCH_OUT_DURATION 2 // Duration of the context switch out
 #define SWITCH_IN_DURATION 1  // Duration of the context switch in
 
+#define FIRST_CORE 0 // The core that will be interrupted
+
 typedef struct CPU_t CPU;
 typedef struct Core_t Core;
 typedef struct Disk_t Disk;
@@ -29,7 +31,10 @@ struct Computer_t
 typedef enum
 {
     IDLE,
-    WORKING
+    WORKING,
+    CONTEXT_SWITCHING_IN,
+    CONTEXT_SWITCHING_OUT,
+    INTERRUPT
 } coreState;
 
 struct CPU_t
@@ -42,7 +47,10 @@ struct CPU_t
 struct Core_t
 {
     int pid;
+    int timer;
+    int previousTimer;
     coreState state;
+    coreState previousState;
 };
 
 
@@ -51,6 +59,7 @@ struct Core_t
 struct Disk_t
 {
     bool isIdle;
+    int pid;
 };
 
 /* ------------------------- function definitions -------------------------
@@ -64,36 +73,16 @@ void freeComputer(Computer *computer);
 CPU *initCPU(int coreCount);
 void freeCPU(CPU *cpu);
 
-/**
- * @brief Set a process to run on a core of the cpu with the given PID
- * 
- * @param cpu: the cpu
- * @param indexCore: the index of the cpu's core
- * @param pid: the PID of the process
- */
-void setProcessToCore(CPU *cpu, int indexCore, int pid);
-
-//!-------------------------------------------------------------------------------//
-//TODO handle the interrupts in the simulation
-/*The cpu check if a process on the cores have an IO interrupt if so 
-put this process on the disk (if idle) remove it from the core and put it in the waiting queue. 
-
-If the disk has finished the IO operation trigger a flag and remove the process from the wait queue
-put the process at the beginning of the ready queue in which it was (thanks to the node of the waiting queue)
-*/
-void interruptHandler(Workload* Workload,CPU *cpu, Scheduler *scheduler, Disk *disk);
-//!-------------------------------------------------------------------------------//
-
 Disk *initDisk(void);
 void freeDisk(Disk *disk);
 
 /**
- * @brief Set a process to the disk for IO operation with the given PID
+ * Handle the trigger of an intterupt by the disk
  * 
- * @param disk: the disk
- * @param pid: the PID of the process
+ * @param computer: the compute (scheduler, cpu, disk)
  */
-void setProcessToDisk(Disk *disk, int pid);
+void interruptHandler(Computer *computer);
+
 
 
 #endif // computer_h

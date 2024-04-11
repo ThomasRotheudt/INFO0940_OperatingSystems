@@ -195,7 +195,7 @@ int main(int argc, const char *argv[])
     printf("-----------------------------------------\n");
 */
     printf("----------------- Graph -----------------\n");
-    //printGraph(graph);
+    printGraph(graph);
     printf("-----------------------------------------\n");
 
     freeGraph(graph);

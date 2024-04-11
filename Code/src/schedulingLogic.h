@@ -21,13 +21,7 @@ typedef struct Scheduler_t Scheduler;
 
 int getWaitQueueCount(void);
 
-/**
- * Get the PID from the first queue which is not empty (to respect the priority queue)
- * 
- * @param scheduler the scheduler
- * @return the pid, -1 otherwise
- */
-int getPIDfromReadyQueue(Scheduler *scheduler);
+
 
 /* -------------------------- init/free functions -------------------------- */
 
@@ -38,14 +32,46 @@ void freeScheduler(Scheduler *scheduler);
 /* -------------------------- scheduling functions ------------------------- */
 
 /**
- * Add a new process to the scheduler
+ * Add a new process to the first queue of the scheduler given its PID if it is not already in the scheduler.
  *
  * @param scheduler: the scheduler
  * @param pid: the pid of the new process
  */
-void addProcessToScheduler(Scheduler *scheduler, int pid);
+void addProcessToScheduler(Scheduler *scheduler, PCB *data);
 
-void scheduling(Scheduler *scheduler);
+/**
+ * Add a process to the waiting queue of the scheduler given its pcb
+ * 
+ * @param scheduler: the scheduler
+ * @param pid: the pid of the process
+ */
+void addProcessToWaitingQueue(Scheduler *scheduler, int pid);
+
+/**
+ * Check all the process in the ready queues to see if a limit is reached, 
+ * if so move the process from queue accordingly to the limit that has been reached
+ * 
+ * @param scheduler: the scheduler
+ */
+void schedulingEvents(Scheduler *scheduler);
+
+/**
+ * return the pid of the process with the highest priority in the scheduler
+ * 
+ * @param scheduler: the scheduler
+ * @return the pid of the process with the highest priority
+ */
+int scheduling(Scheduler *scheduler);
+
+void setProcessToCore(Computer *computer, int indexCore, int pid);
+
+void setProcessToDisk(Computer *computer);
+
+void updateSchedulingValue(Scheduler *scheduler);
+
+void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
+
+void returnFromWaitQueue(Scheduler *scheduler, int pid);
 
 void printQueue(Scheduler *scheduler);
 

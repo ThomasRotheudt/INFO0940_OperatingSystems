@@ -11,35 +11,8 @@
 
 #define INTERRUPT_TIME 1
 
+
 /* ---------------------------- static functions --------------------------- */
-
-/* ----------------- static CPU functions  ---------------- */
-
-int getProcessFromCore(CPU *cpu, int indexProcess);
-
-/* ----------------- static Disk functions  --------------- */
-
-
-
-/* -------------------------- getters and setters -------------------------- */
-
-/* ----------------- static CPU functions  ---------------- */
-
-void setProcessToCore(CPU *cpu, int indexCore, int pid)
-{
-    if(!cpu)
-    {
-        return;
-    }
-
-    Core *core = cpu->cores[indexCore];
-
-    core->pid = pid;
-    core->state = WORKING;
-}
-
-/* ----------------- static Disk functions  --------------- */
-
 
 
 /* -------------------------- init/free functions -------------------------- */
@@ -94,6 +67,11 @@ CPU *initCPU(int coreCount)
             return NULL;
         }
         cpu->cores[i]->state = IDLE;
+        cpu->cores[i]->previousState = IDLE; 
+        cpu->cores[i]->timer = 0;
+        cpu->cores[i]->previousTimer = 0;
+        //No process at initialisation
+        cpu->cores[i]->pid = -1; 
     }
 
     cpu->coreCount = coreCount;
@@ -120,6 +98,8 @@ Disk *initDisk(void)
     }
 
     disk->isIdle = true;
+    // No process at initialisation
+    disk->pid = -1;
 
     return disk;
 }
@@ -129,4 +109,28 @@ void freeDisk(Disk *disk)
     free(disk);
 }
 
-/* ---------------------------- static functions --------------------------- */
+/* --------------------------functions implementation--------------------------- */
+
+void interruptHandler(Computer *computer)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    Disk *disk = computer->disk;
+    CPU *cpu = computer->cpu;
+
+    Core *interruptedCore = cpu->cores[FIRST_CORE];
+    
+    //? refaire????
+
+    interruptedCore->previousState = interruptedCore->state;
+    interruptedCore->state = INTERRUPT;
+
+    interruptedCore->previousTimer = interruptedCore->timer;
+    interruptedCore->timer = INTERRUPT_TIME;
+    
+}

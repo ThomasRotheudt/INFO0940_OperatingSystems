@@ -64,13 +64,53 @@ struct Scheduler_t
 
 /* ---------------- AddProcessToScheduler static function ----------- */
 
+/**
+ * Check if the process is already in the scheduler (ready, running, waiting queues) given its pid
+ * 
+ * @param scheduler: The scheduler
+ * @param pid: The pid of the process
+ * @return True if the scheduler is the scheduler, False otherwise
+ */
 static bool isInScheduler(Scheduler *scheduler, int pid);
 
 /* ---------------- schedulingEvents static function ---------------- */
+/*These functions only serve in the schedulingEvents function for readability*/
 
+/**
+ * Check the events in the ready queues. (limit age is reached or not)
+ * 
+ * @param scheduler: The scheduler
+ */
+static void checkEventsInReadyQueue(Scheduler *scheduler);
 
+/**
+ * Check for events in the running queue and handle them accordingly.
+ * 
+ * @param computer: All composants of the computer (scheduler, cpu, and disk)
+ * @param workload: The workload
+ */
+static void checkEventsInRunningQueue(Computer *computer, Workload *workload);
 
-/* ------------------------------------------------------------------ */
+/**
+ * Perform a context switch out for the core that is running the process in the node
+ * 
+ * @param computer: All composants of the computer (scheduler, cpu, and disk) 
+ * @param node: The node that contains the process
+ */
+static void performContextSwitchOut(Scheduler *scheduler, Core *core, QueueNode *node);
+
+/**
+ * Find the core on the cpu that runs the process given its pid
+ * 
+ * @param cpu: The cpu
+ * @param pid: The pid of the process
+ * @return A pointer to the core that runs the process, NULL otherwise
+ */
+static Core *findProcessCore(CPU *cpu, int pid);
+
+/* ---------------- setProcessToCore static function ---------------- */
+
+static int scheduling(Scheduler *scheduler, Workload *workload);
 
 /**
  * Apply the First Come First Serve algorithm to the queue.
@@ -108,6 +148,7 @@ static int sjfAlgorithm(Queue *queue, Workload *workload);
  */
 static int priorityAlgorithm(Queue *queue);
 
+
 /* ---------------- static Init/free Queue functions  --------------- */
 
 /**
@@ -131,10 +172,31 @@ static void freeQueue(Queue *queue);
 
 /* ---------------- static Queue functions  ------------------------- */
 
+/**
+ * Insert a node in a queue
+ * 
+ * @param queue: The queue in which the node will be inserted
+ * @param node: The node to insert
+ * @return 1 if the node is inserted, 0 otherwise
+ */
 static int insertInQueue(Queue *queue, QueueNode *node);
 
+/**
+ * Search a node in the queue
+ * 
+ * @param queue: The queue to search in
+ * @param pid: The pid of the process to search
+ * @return A pointer to the node, NULL if node is not in the queue 
+ */
 static QueueNode *searchInQueue(Queue *queue, int pid);
 
+/**
+ * Remove a node from a queue
+ * 
+ * @param queue: The queue from which the node will be removed
+ * @param node: The node to remove
+ * @return A pointer to the node that is removeds
+ */
 static QueueNode *removeElement(Queue *queue, QueueNode *node);
 
 /* -------------------------- getters and setters -------------------------- */
@@ -264,7 +326,6 @@ void freeScheduler(Scheduler *scheduler)
 }
 
 
-
 /* -------------------------- scheduling functions ------------------------- */
 
 /* ------------------- Change Process of Queue -------------------- */
@@ -341,7 +402,6 @@ void returnFromWaitQueue(Scheduler *scheduler, int pid)
 }
 
 
-
 void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
 {
     // Check if the computer exist (is allocated)
@@ -374,7 +434,6 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
 }
 
 
-
 /* -------------------- Event & Update values --------------------- */
 
 void schedulingEvents(Computer *computer, Workload *workload)
@@ -385,200 +444,77 @@ void schedulingEvents(Computer *computer, Workload *workload)
         return;
     }
 
-    Scheduler *scheduler = computer->scheduler;
-
     // Check for events in ready queue
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        Queue *queue = scheduler->readyQueue[i];
-        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[i];
-
-        if (algorithmInfo->ageLimit > 0)
-        {
-            QueueNode *current = queue->head;
-            while (current)
-            {
-                QueueNode *tmp = current;
-                current = current->nextNode;
-                if (tmp->age >= algorithmInfo->ageLimit)
-                {
-                    if (tmp->indexReadyQueue > 0)
-                    {
-                        tmp->age = 0;
-                        tmp->execTime = 0;
-                        tmp->indexReadyQueue--;
-
-                        // Check if the new queue algorithm is RR set the RR timer
-                        if (scheduler->readyQueueAlgorithms[tmp->indexReadyQueue]->type == RR)
-                        {
-                            tmp->RRTimer = 0;
-                        }
-                        else
-                        {
-                            tmp->RRTimer = -1;
-                        }
-                        
-                        tmp = removeElement(queue, tmp);
-                        insertInQueue(scheduler->readyQueue[tmp->indexReadyQueue], tmp);
-                    }
-                }
-            }
-        }
-    }
+    checkEventsInReadyQueue(computer->scheduler);
+    
     
     // Check for events in running queue
-    QueueNode *current = scheduler->runningQueue->head;
-    while (current)
-    {
-        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[current->indexReadyQueue];
-        QueueNode *tmp = current;
-        current = current->nextNode;
-
-        // Check if the current process in the running queue is in a RR queue
-        if (algorithmInfo->type == RR)
-        {
-            // Check if the RR timer is finished
-            if (tmp->RRTimer >= algorithmInfo->RRSliceLimit)
-            {
-                Core *core = NULL;
-                // Search the core on which the process run
-                for (int i = 0; i < computer->cpu->coreCount; i++)
-                {
-                    if (computer->cpu->cores[i]->state == WORKING)
-                    {
-                        if (tmp->data->pid == computer->cpu->cores[i]->pid)
-                        {
-                            core = computer->cpu->cores[i];
-                        }
-                    }
-                }
-                
-                tmp->RRTimer = 0;
-
-                // Check if there is a limit for the queue
-                if (algorithmInfo->executiontTimeLimit > 0)
-                {
-                    // Check if the limit is reached
-                    if (tmp->execTime >= algorithmInfo->executiontTimeLimit)
-                    {
-                        // We check the queue is not the last one
-                        if (tmp->indexReadyQueue < scheduler->readyQueueCount - 1)
-                        {
-                            tmp->indexReadyQueue++;
-                            tmp->age = 0;
-                            tmp->execTime = 0;
-
-                            // Check if the new queue algorithm is RR set the RR timer
-                            if (scheduler->readyQueueAlgorithms[tmp->indexReadyQueue]->type == RR)
-                            {
-                                tmp->RRTimer = 0;
-                            }
-                            else
-                            {
-                                tmp->RRTimer = -1;
-                            }
-                        }
-                    }
-                }
-
-                if ((scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0))
-                {
-                    tmp = removeElement(scheduler->runningQueue, tmp);
-                    insertInQueue(scheduler->readyQueue[tmp->indexReadyQueue], tmp);
-
-                    setProcessState(workload, tmp->data->pid, READY);
-
-                    // Set the context switch out of the core
-                    core->timer = SWITCH_OUT_DURATION;
-                    // Set the state of the core to context switching out
-                    core->state = CONTEXT_SWITCHING_OUT;
-                    //Remove the pid from the core
-                    core->pid = -1;
-                }
-            }
-            printf("TEST\n");
-            // Check if the exec time limit is reached before the RR timer
-            if (tmp->execTime >= algorithmInfo->executiontTimeLimit)
-            {
-                // We check the queue is not the last one
-                if (tmp->indexReadyQueue < scheduler->readyQueueCount - 1)
-                {
-                    tmp->indexReadyQueue++;
-                    tmp->age = 0;
-                    tmp->execTime = 0;
-
-                    // Check if the new queue algorithm is RR set the RR timer
-                    if (scheduler->readyQueueAlgorithms[tmp->indexReadyQueue]->type == RR)
-                    {
-                        tmp->RRTimer = 0;
-                    }
-                    else
-                    {
-                        tmp->RRTimer = -1;
-                    }
-
-                    if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0)
-                    {
-                        Core *core = NULL;
-                        // Search the core on which the process run
-                        for (int i = 0; i < computer->cpu->coreCount; i++)
-                        {
-                            if (computer->cpu->cores[i]->state == WORKING)
-                            {
-                                if (tmp->data->pid == computer->cpu->cores[i]->pid)
-                                {
-                                    core = computer->cpu->cores[i];
-                                }
-                            }
-                        }
-
-                        tmp = removeElement(scheduler->runningQueue, tmp);
-                        insertInQueue(scheduler->readyQueue[tmp->indexReadyQueue], tmp);
-
-                        setProcessState(workload, tmp->data->pid, READY);
-
-                        // Set the context switch out of the core
-                        core->timer = SWITCH_OUT_DURATION;
-                        // Set the state of the core to context switching out
-                        core->state = CONTEXT_SWITCHING_OUT;
-                        //Remove the pid from the core
-                        core->pid = -1;
-                    }
-                }
-            }
-        }
-        // If the current process in the running queue is in a different queue
-        else
-        {
-            // Check if there is a limit for the queue
-            if (algorithmInfo->executiontTimeLimit > 0)
-            {
-                // Check if the limit is reached
-                if (tmp->execTime >= algorithmInfo->executiontTimeLimit)
-                {
-                    // We check the queue is not the last one
-                    if (tmp->indexReadyQueue < scheduler->readyQueueCount - 1)
-                    {
-                        tmp->indexReadyQueue++;
-                        tmp->age = 0;
-                        tmp->execTime = 0;
-
-                        // Check if the new queue algorithm is RR set the RR timer
-                        if (scheduler->readyQueueAlgorithms[tmp->indexReadyQueue]->type == RR)
-                        {
-                            tmp->RRTimer = 0;
-                        }
-                        else
-                        {
-                            tmp->RRTimer = -1;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    checkEventsInRunningQueue(computer, workload);
 }
 
+
+void preemption(Computer *computer, Workload *workload)
+{
+    if (!computer)
+    {
+        fprintf(stderr, "Error: The computer does not exist.\n");
+        return;
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    CPU *cpu = computer->cpu;
+    
+    // Check all process that run on a core to see if a higher priority is available
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        Core *core = cpu->cores[i];
+        if (core->state == WORKING)
+        {
+            QueueNode *node = searchInQueue(scheduler->runningQueue, core->pid);
+            if (node)
+            {
+                SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[node->indexReadyQueue];
+                for (int j = 0; j <= node->indexReadyQueue; j++)
+                {
+                    if (j < node->indexReadyQueue)
+                    {
+                        if (scheduler->readyQueue[j]->nbrOfNode > 0)
+                        {
+                            if (algorithmInfo->type == RR)
+                            {   
+                                node->RRTimer = 0;
+                            }
+                            
+                            performContextSwitchOut(scheduler, core, node);
+                            setProcessState(workload, node->data->pid, READY);
+                        }
+                    }
+                    // Check if there is a process in the node's queue (preempt if so)
+                    else if (j == node->indexReadyQueue)
+                    {
+                        if (algorithmInfo->type == SJF)
+                        {
+                            int pid = node->data->pid;
+                            int newPid = sjfAlgorithm(scheduler->readyQueue[node->indexReadyQueue], workload);
+                            if (newPid == -1)
+                            {
+                                break;
+                            }
+                            
+                            if (getProcessCurEventTimeLeft(workload, pid) > getProcessCurEventTimeLeft(workload, newPid))
+                            {
+                                performContextSwitchOut(scheduler, core, node);
+                                setProcessState(workload, node->data->pid, READY);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return;
+    }
+}
 
 
 void updateSchedulingValue(Scheduler *scheduler, Workload *workload)
@@ -626,157 +562,25 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload)
     }
 }
 
-
-
-void preemption(Computer *computer, Workload *workload)
-{
-    if (!computer)
-    {
-        fprintf(stderr, "Error: The computer does not exist.\n");
-        return;
-    }
-
-    Scheduler *scheduler = computer->scheduler;
-    CPU *cpu = computer->cpu;
-    
-    // Check all process that run on a core to see if a higher priority is available
-    for (int i = 0; i < cpu->coreCount; i++)
-    {
-        Core *core = cpu->cores[i];
-        if (core->state == WORKING)
-        {
-            QueueNode *node = searchInQueue(scheduler->runningQueue, core->pid);
-            if (node)
-            {
-                SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[node->indexReadyQueue];
-                for (int j = 0; j <= node->indexReadyQueue; j++)
-                {
-                    if (j == node->indexReadyQueue)
-                    {
-                        if (algorithmInfo->type == SJF)
-                        {
-                            int pid = node->data->pid;
-                            int newPid = sjfAlgorithm(scheduler->readyQueue[node->indexReadyQueue], workload);
-                            if (newPid == -1)
-                            {
-                                break;
-                            }
-                            
-
-                            if (getProcessCurEventTimeLeft(workload, pid) > getProcessCurEventTimeLeft(workload, newPid))
-                            {
-                                node = removeElement(scheduler->runningQueue, node);
-                                insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
-
-                                setProcessState(workload, node->data->pid, READY);
-
-                                // Set the context switch out of the core
-                                core->timer = SWITCH_OUT_DURATION;
-                                // Set the state of the core to context switching out
-                                core->state = CONTEXT_SWITCHING_OUT;
-                                //Remove the pid from the core
-                                core->pid = -1;
-                            }
-                        }
-                    }
-                    // Check if there is a process in higher queue (preempt if so)
-                    else if (j < node->indexReadyQueue)
-                    {
-                        if (scheduler->readyQueue[j]->nbrOfNode > 0)
-                        {
-                            if (algorithmInfo->type == RR)
-                            {   
-                                node->RRTimer = 0;
-                            }
-                            
-                            node = removeElement(scheduler->runningQueue, node);
-                            insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
-
-                            setProcessState(workload, node->data->pid, READY);
-
-                            // Set the context switch out of the core
-                            core->timer = SWITCH_OUT_DURATION;
-                            // Set the state of the core to context switching out
-                            core->state = CONTEXT_SWITCHING_OUT;
-                            //Remove the pid from the core
-                            core->pid = -1;
-                        }
-                    }
-                }
-            }
-        }
-
-        return;
-    }
-}
-
-
-
 /* --------------------- Assign Ressources ------------------------ */
 
-int scheduling(Scheduler *scheduler, Workload *workload)
-{
-    if (!scheduler)
-    {
-        fprintf(stderr, "Error: The scheduler does not exist.\n");
-        return -1;
-    }
-
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        if (scheduler->readyQueue[i]->nbrOfNode <= 0)
-        {
-            return -1;
-        }
-    }
-
-    // return the pid accordingly to the algorithm of the first queue not empty
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        Queue *queue = scheduler->readyQueue[i];
-        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[i];
-        if (queue->nbrOfNode > 0)
-        {
-            switch (algorithmInfo->type)
-            {
-            case FCFS:
-                return fcfsAlgorithm(queue);
-
-            case RR:
-                return rrAlgorithm(queue);
-
-            case PRIORITY:
-                return priorityAlgorithm(queue);
-
-            case SJF:
-                return sjfAlgorithm(queue, workload);
-
-            default:
-                break;
-            }
-        }
-    }
-    return -1;
-}
-
-void setProcessToCore(Computer *computer, int indexCore, int pid)
+void setProcessToCore(Computer *computer, Workload *workload, int indexCore)
 {
     if (!computer)
     {
         fprintf(stderr, "Error: The computer does not exist.\n");
-        return;
-    }
-
-    printf("%d\n", pid);
-    
-    if (pid == -1)
-    {
         return;
     }
     
     Scheduler *scheduler = computer->scheduler;
     Core *core = computer->cpu->cores[indexCore];
 
+    int pid = scheduling(scheduler, workload);
+    if (pid == -1)
+    {
+        return;
+    }
+    
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
         QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
@@ -794,6 +598,7 @@ void setProcessToCore(Computer *computer, int indexCore, int pid)
         }
     }
 }
+
 
 void setProcessToDisk(Computer *computer)
 {
@@ -814,7 +619,6 @@ void setProcessToDisk(Computer *computer)
         disk->pid = node->data->pid;
     }
 }
-
 
 
 void printQueue(Scheduler *scheduler)
@@ -855,12 +659,9 @@ void printQueue(Scheduler *scheduler)
 }
 
 
-
-
-
-
-
 /* ---------------------------- static functions --------------------------- */
+
+/* ---------------- AddProcessToScheduler static function ----------- */
 
 static bool isInScheduler(Scheduler *scheduler, int pid)
 {
@@ -895,6 +696,226 @@ static bool isInScheduler(Scheduler *scheduler, int pid)
     return false;
 }
 
+/* ---------------- schedulingEvents static function ---------------- */
+
+static Core *findProcessCore(CPU *cpu, int pid)
+{
+    if (!cpu || pid == -1)
+    {
+        return NULL;
+    }
+
+    // Search the core on which the process run
+    for (int i = 0; i < cpu->coreCount; i++)
+    {
+        if (cpu->cores[i]->state == WORKING)
+        {
+            if (pid == cpu->cores[i]->pid)
+            {
+                return cpu->cores[i];
+            }
+        }
+    }
+    
+    return NULL;
+}
+
+
+static void performContextSwitchOut(Scheduler *scheduler, Core *core, QueueNode *node)
+{
+    if (!scheduler || !core || !node)
+    {
+        return;
+    }
+    
+    node = removeElement(scheduler->runningQueue, node);
+    insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
+    
+    // Set the context switch out of the core
+    core->timer = SWITCH_OUT_DURATION;
+    // Set the state of the core to context switching out
+    core->state = CONTEXT_SWITCHING_OUT;
+    //Remove the pid from the core
+    core->pid = -1;
+}
+
+
+static void checkEventsInReadyQueue(Scheduler *scheduler)
+{
+    for (int i = 0; i < scheduler->readyQueueCount; i++)
+    {
+        Queue *queue = scheduler->readyQueue[i];
+        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[i];
+
+        if (algorithmInfo->ageLimit > 0)
+        {
+            QueueNode *current = queue->head;
+            while (current)
+            {
+                QueueNode *tmp = current;
+                current = current->nextNode;
+
+                if (tmp->age >= algorithmInfo->ageLimit)
+                {
+                    if (tmp->indexReadyQueue > 0)
+                    {
+                        tmp->age = 0;
+                        tmp->execTime = 0;
+                        tmp->indexReadyQueue--;
+
+                        // Check if the new queue algorithm is RR set the RR timer
+                        if (scheduler->readyQueueAlgorithms[tmp->indexReadyQueue]->type == RR)
+                        {
+                            tmp->RRTimer = 0;
+                        }
+                        else
+                        {
+                            tmp->RRTimer = -1;
+                        }
+                        
+                        tmp = removeElement(queue, tmp);
+                        insertInQueue(scheduler->readyQueue[tmp->indexReadyQueue], tmp);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+static void checkEventsInRunningQueue(Computer *computer, Workload *workload) 
+{
+    if (!computer) 
+    {
+        return; // Exit if computer is NULL
+    }
+
+    Scheduler *scheduler = computer->scheduler;
+    CPU *cpu = computer->cpu;
+
+    // Iterate through the processes in the running queue
+    QueueNode *current = scheduler->runningQueue->head;
+    while (current) 
+    {
+        // Get scheduling algorithm information for the current process
+        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[current->indexReadyQueue];
+        QueueNode *tmp = current;
+        current = current->nextNode;
+
+        // Check if the RR timer is finished or the execution time limit is reached
+        if (tmp->RRTimer >= algorithmInfo->RRSliceLimit || tmp->execTime >= algorithmInfo->executiontTimeLimit) 
+        {
+            if (tmp->execTime >= algorithmInfo->executiontTimeLimit) 
+            {
+                // Reset process parameters and move to the next queue if execution time limit is reached
+                if (tmp->indexReadyQueue < scheduler->readyQueueCount - 1) 
+                {
+                    tmp->indexReadyQueue++;
+                    tmp->age = 0;
+                    tmp->execTime = 0;
+
+                    // Reset RR timer if the next queue uses RR scheduling
+                    if (scheduler->readyQueueAlgorithms[tmp->indexReadyQueue]->type == RR) 
+                    {
+                        tmp->RRTimer = 0;
+                    } 
+                    else 
+                    {
+                        tmp->RRTimer = -1;
+                    }
+
+                    // Perform context switch and set process state to ready if next queue is not empty
+                    if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0 && algorithmInfo->type == RR) 
+                    {
+                        Core *core = findProcessCore(cpu, tmp->data->pid);
+                        if (core)
+                        {
+                            performContextSwitchOut(scheduler, core, tmp);
+                            setProcessState(workload, tmp->data->pid, READY);
+                            continue;
+                        }
+                    }
+                }
+            }
+            
+            // Reset RR timer if it's reached and the scheduling algorithm is RR
+            if (tmp->RRTimer >= algorithmInfo->RRSliceLimit && algorithmInfo->type == RR) 
+            {
+                tmp->RRTimer = 0;
+
+                // Perform context switch and set process state to ready if next queue is not empty
+                if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0) 
+                {
+                    Core *core = findProcessCore(cpu, tmp->data->pid);
+                    if (core)
+                    {
+                        performContextSwitchOut(scheduler, core, tmp);
+                        setProcessState(workload, tmp->data->pid, READY);
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ---------------- setProcessToCore static function ---------------- */
+
+static int scheduling(Scheduler *scheduler, Workload *workload) 
+{
+    // Check if the scheduler exists
+    if (!scheduler) 
+    {
+        fprintf(stderr, "Error: The scheduler does not exist.\n");
+        return -1;
+    }
+
+    // Check if all ready queues are empty
+    int allQueuesEmpty = 1;
+    for (int i = 0; i < scheduler->readyQueueCount; i++) 
+    {
+        if (scheduler->readyQueue[i]->nbrOfNode > 0) 
+        {
+            // At least one ready queue is not empty
+            allQueuesEmpty = 0; 
+            break;
+        }
+    }
+    if (allQueuesEmpty) 
+    {
+        // All ready queues are empty
+        return -1; 
+    }
+
+    // Return the PID according to the algorithm of the first non-empty queue
+    for (int i = 0; i < scheduler->readyQueueCount; i++) 
+    {
+        Queue *queue = scheduler->readyQueue[i];
+        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[i];
+        if (queue->nbrOfNode > 0) {
+            switch (algorithmInfo->type) 
+            {
+                case FCFS:
+                    return fcfsAlgorithm(queue);
+
+                case RR:
+                    return rrAlgorithm(queue);
+
+                case PRIORITY:
+                    return priorityAlgorithm(queue);
+
+                case SJF:
+                    return sjfAlgorithm(queue, workload);
+
+                default:
+                    break;
+            }
+        }
+    }
+    return -1; // No process to execute
+}
+
+
 static int fcfsAlgorithm(Queue *queue)
 {
     // Check if the queue is empty or not allocated
@@ -906,6 +927,7 @@ static int fcfsAlgorithm(Queue *queue)
     return queue->head->data->pid;
 }
 
+
 static int rrAlgorithm(Queue *queue)
 {
     // Check if the queue is empty or not allocated
@@ -916,6 +938,7 @@ static int rrAlgorithm(Queue *queue)
 
     return queue->head->data->pid;
 }
+
 
 static int sjfAlgorithm(Queue *queue, Workload *workload)
 {
@@ -948,6 +971,7 @@ static int sjfAlgorithm(Queue *queue, Workload *workload)
     // Return the PID of the job with the shortest remaining time
     return shortestJobPid;
 }
+
 
 static int priorityAlgorithm(Queue *queue)
 {
@@ -997,6 +1021,7 @@ static Queue *initQueue(int indexQueue)
     return queue;
 }
 
+
 static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue)
 {
     QueueNode *queueNode = malloc(sizeof(QueueNode));
@@ -1015,6 +1040,7 @@ static QueueNode *initQueueNode(PCB *pcb, int indexReadyQueue)
 
     return queueNode;
 }
+
 
 static void freeQueue(Queue *queue)
 {
@@ -1058,10 +1084,12 @@ static int insertInQueue(Queue *queue, QueueNode *node)
         queue->tail = node;
     }
 
+    // Update the number of node in the queue
     queue->nbrOfNode++;
 
     return 1;
 }
+
 
 static QueueNode *removeElement(Queue *queue, QueueNode *node)
 {
@@ -1081,19 +1109,27 @@ static QueueNode *removeElement(Queue *queue, QueueNode *node)
     if (node == queue->head)
     {
         queue->head = node->nextNode;
-        if (queue->head) // Check if the queue is not empty after removing the head
+        if (queue->head)// Check if the queue is not empty after removing the head
+        {
             queue->head->prevNode = NULL;
+        }
         else // The queue is now empty, set the tail to NULL
+        {
             queue->tail = NULL;
+        }
     }
     // Check if the node is the tail of the queue
     else if (node == queue->tail)
     {
         queue->tail = node->prevNode;
         if (queue->tail) // Check if the queue is not empty after removing the tail
+        {
             queue->tail->nextNode = NULL;
+        }
         else // The queue is now empty, set the head to NULL
+        {
             queue->head = NULL;
+        }
     }
     else
     {
@@ -1105,28 +1141,32 @@ static QueueNode *removeElement(Queue *queue, QueueNode *node)
     node->nextNode = NULL;
     node->prevNode = NULL;
 
+    // Update the number of node in the queue
     queue->nbrOfNode--;
 
     return node;
 }
 
+
 static QueueNode *searchInQueue(Queue *queue, int pid)
 {
+    // Check if queue is NULL
     if (!queue)
     {
         return NULL;
     }
-    
-    QueueNode *current = queue->head;
 
-    while (current)
+    QueueNode *current = queue->head; // Start from the head of the queue
+
+    // Traverse the queue until the end or the PID is found
+    while (current != NULL)
     {
         if (current->data->pid == pid)
         {
-            return current;
+            return current; // Return the node if the PID is found
         }
-        current = current->nextNode;
+        current = current->nextNode; // Move to the next node in the queue
     }
 
-    return NULL;
+    return NULL; // Return NULL if the PID is not found in the queue
 }

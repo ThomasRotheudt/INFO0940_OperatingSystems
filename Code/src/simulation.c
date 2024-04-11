@@ -549,11 +549,6 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         }
 
         time++;
-        if (time >= 60)
-        {
-            break;
-        }
-        
     }
     freeComputer(computer);
 }
@@ -715,7 +710,6 @@ static void assigningRessources(Computer *computer, Workload *workload)
         return;
     }
 
-    Scheduler *scheduler = computer->scheduler;
     CPU *cpu = computer->cpu;
     Disk *disk = computer->disk;
 
@@ -725,8 +719,7 @@ static void assigningRessources(Computer *computer, Workload *workload)
 
         if (core->state == IDLE)
         {
-            int pid = scheduling(scheduler, workload);
-            setProcessToCore(computer, i, pid);
+            setProcessToCore(computer, workload, i);
         }
     }
     

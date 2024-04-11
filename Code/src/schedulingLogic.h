@@ -95,8 +95,6 @@ void preemption(Computer *computer, Workload *workload);
 
 /* --------------------- Assign Ressources ------------------------ */
 
-int scheduling(Scheduler *scheduler, Workload *workload);
-
 /**
  * Set a process to a core given by the scheduler (thanks to the scheduling algorithm)
  * 
@@ -104,7 +102,7 @@ int scheduling(Scheduler *scheduler, Workload *workload);
  * @param indexCore: The index of the core to change
  * @param pid: The pid of the proces
  */
-void setProcessToCore(Computer *computer, int indexCore, int pid);
+void setProcessToCore(Computer *computer, Workload *workload, int indexCore);
 
 /**
  * Set the first process of the waiting queue to the disk

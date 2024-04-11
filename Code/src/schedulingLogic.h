@@ -40,43 +40,77 @@ void freeScheduler(Scheduler *scheduler);
 void addProcessToScheduler(Scheduler *scheduler, PCB *data);
 
 /**
- * Add a process to the waiting queue of the scheduler given its pcb
+ * Add a process to the waiting queue of the scheduler given its pid
  * 
- * @param scheduler: the scheduler
- * @param pid: the pid of the process
+ * @param scheduler: The scheduler
+ * @param pid: The pid of the process
  */
 void addProcessToWaitingQueue(Scheduler *scheduler, int pid);
 
-void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
-
+/**
+ * Remove a process from the waiting queue and puts it in its ready queue given its pid
+ * 
+ * @param scheduler: The scheduler 
+ * @param pid: The pid of the process
+ */
 void returnFromWaitQueue(Scheduler *scheduler, int pid);
+
+/**
+ * Remove a process from the scheduler and set the core where it was running to idle 
+ * 
+ * @param computer: All composants of the computer (scheduler, cpu, and disk)
+ * @param pid: The pid of the process to remove
+ * @param indexCore: The index of the core to change
+ */
+void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
 
 /* -------------------- Event & Update values --------------------- */
 
 /**
- * Check all the process in the ready queues to see if a limit is reached, 
- * if so move the process from queue accordingly to the limit that has been reached
+ * Check all the process in the ready queues and the running queue to see if a limit or a timer (Round-Robin) is reached, 
+ * if so handle the event (timer is finished, limit is reached)
  * 
- * @param scheduler: the scheduler
+ * @param scheduler: All composants of the computer (scheduler, cpu, and disk)
+ * @param workload: The workload
  */
-void schedulingEvents(Scheduler *scheduler, Computer *computer, Workload *workload);
+void schedulingEvents(Computer *computer, Workload *workload);
 
+
+/**
+ * Update all value in the ready queue and the running queue (RR timer, age, and execution time in the queue)
+ * 
+ * @param scheduler: The scheduler
+ * @param workload: The workload
+ */
 void updateSchedulingValue(Scheduler *scheduler, Workload *workload);
 
+/**
+ * Check if a process must be preempted (if a process with higher priority is in the scheduler).
+ * Preempt the core if there is one.
+ * 
+ * @param computer: All composants of the computer (scheduler, cpu, and disk)
+ * @param workload: The workload
+ */
 void preemption(Computer *computer, Workload *workload);
 
 /* --------------------- Assign Ressources ------------------------ */
 
-/**
- * return the pid of the process with the highest priority in the scheduler
- * 
- * @param scheduler: the scheduler
- * @return the pid of the process with the highest priority
- */
-int scheduling(Scheduler *scheduler);
+int scheduling(Scheduler *scheduler, Workload *workload);
 
+/**
+ * Set a process to a core given by the scheduler (thanks to the scheduling algorithm)
+ * 
+ * @param computer: All composants of the computer (scheduler, cpu, and disk)
+ * @param indexCore: The index of the core to change
+ * @param pid: The pid of the proces
+ */
 void setProcessToCore(Computer *computer, int indexCore, int pid);
 
+/**
+ * Set the first process of the waiting queue to the disk
+ * 
+ * @param computer: All composants of the computer (scheduler, cpu, and disk)
+ */
 void setProcessToDisk(Computer *computer);
 
 

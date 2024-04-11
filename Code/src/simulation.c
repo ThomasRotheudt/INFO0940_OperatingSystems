@@ -106,7 +106,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time);
  * 
  * @param computer: all composant of the computer (scheduler, cpu, and disk)
  */
-static void assigningRessources(Computer *computer);
+static void assigningRessources(Computer *computer, Workload *workload);
 
 static void updateValue(Computer *computer, Workload *workload);
 
@@ -510,13 +510,18 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             {
                 printf("   Core is working\n");
             }
+            else if (cpu->cores[i]->state == INTERRUPT)
+            {
+                printf("   Core is interrupting\n");
+            }
+            
         }
         printf("|----------DISK---------|\n");
         printf("    DISK: |PID: %d|\n", disk->pid);
         printf("|-----------------------|\n\n");
 
         checkEvents(computer, workload, time);
-        assigningRessources(computer);
+        assigningRessources(computer, workload);
         updateValue(computer, workload);
 
         for (int i = 0; i < workload->nbProcesses; i++)
@@ -544,6 +549,11 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         }
 
         time++;
+        if (time >= 60)
+        {
+            break;
+        }
+        
     }
     freeComputer(computer);
 }
@@ -603,7 +613,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     }
 
     // Check scheduling events
-    schedulingEvents(scheduler, computer, workload);
+    schedulingEvents(computer, workload);
 
     // Check for the end of context switch or interrupt
     for (int i = 0; i < cpu->coreCount; i++)
@@ -691,11 +701,13 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
                 setProcessState(workload, interruptedCore->pid, READY);
             }
             interruptHandler(computer);
+            // Update the next event of the process in the workload
+            setProcessNextEvent(workload, pid);
         }
     }
 }
 
-static void assigningRessources(Computer *computer)
+static void assigningRessources(Computer *computer, Workload *workload)
 {
     if (!computer)
     {
@@ -713,11 +725,11 @@ static void assigningRessources(Computer *computer)
 
         if (core->state == IDLE)
         {
-            int pid = scheduling(scheduler);
+            int pid = scheduling(scheduler, workload);
             setProcessToCore(computer, i, pid);
         }
     }
-
+    
     if (disk->isFree)
     {
         setProcessToDisk(computer);

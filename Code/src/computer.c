@@ -73,8 +73,6 @@ CPU *initCPU(int coreCount)
         //No process at initialisation
         cpu->cores[i]->pid = -1; 
     }
-
-    cpu->nbrOfSwitchOut;
     cpu->coreCount = coreCount;
 
     return cpu;

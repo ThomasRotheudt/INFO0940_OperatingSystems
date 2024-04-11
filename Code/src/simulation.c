@@ -528,13 +528,6 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         updateValue(computer, workload, stats);
 
         fullFillGraph(graph, computer, workload, time);
-        
-        time++;
-        if (time >= 200)
-        {
-            break;
-        }
-        
     }
 
     freeComputer(computer);

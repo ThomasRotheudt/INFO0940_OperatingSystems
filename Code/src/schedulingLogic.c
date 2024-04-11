@@ -89,7 +89,7 @@ static void checkEventsInReadyQueue(Scheduler *scheduler);
  * @param computer: All composants of the computer (scheduler, cpu, and disk)
  * @param workload: The workload
  */
-static void checkEventsInRunningQueue(Computer *computer, Workload *workload);
+static void checkEventsInRunningQueue(Computer *computer, Workload *workload, AllStats *stats);
 
 /**
  * Perform a context switch out for the core that is running the process in the node
@@ -436,7 +436,7 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore)
 
 /* -------------------- Event & Update values --------------------- */
 
-void schedulingEvents(Computer *computer, Workload *workload)
+void schedulingEvents(Computer *computer, Workload *workload, AllStats *stats)
 {
     if (!computer)
     {
@@ -449,75 +449,111 @@ void schedulingEvents(Computer *computer, Workload *workload)
     
     
     // Check for events in running queue
-    checkEventsInRunningQueue(computer, workload);
+    checkEventsInRunningQueue(computer, workload, stats);
 }
 
 
-void preemption(Computer *computer, Workload *workload)
+void preemption(Computer *computer, Workload *workload, AllStats *stats)
 {
+    // Check if the computer object exists
     if (!computer)
     {
         fprintf(stderr, "Error: The computer does not exist.\n");
         return;
     }
 
+    // Retrieve the scheduler and CPU from the computer object
     Scheduler *scheduler = computer->scheduler;
     CPU *cpu = computer->cpu;
     
-    // Check all process that run on a core to see if a higher priority is available
+    // Check all processes running on each core to see if a higher priority process is available
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
+        // If the core is working (running a process)
         if (core->state == WORKING)
         {
+            // Get the statistics for the currently running process
+            ProcessStats *processStat = getProcessStats(stats, core->pid);
+            // Search for the node of the currently running process in the running queue
             QueueNode *node = searchInQueue(scheduler->runningQueue, core->pid);
+            // If the node is found
             if (node)
             {
+                // Get the scheduling algorithm info for the node's queue
                 SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[node->indexReadyQueue];
+                // Loop through all queues up to the node's queue index
                 for (int j = 0; j <= node->indexReadyQueue; j++)
                 {
+                    // If the current queue is not the node's queue
                     if (j < node->indexReadyQueue)
                     {
+                        // Check if there are processes in the queue
                         if (scheduler->readyQueue[j]->nbrOfNode > 0)
                         {
+                            // Reset the Round-Robin timer if the current algorithm is RR
                             if (algorithmInfo->type == RR)
                             {   
                                 node->RRTimer = 0;
                             }
-                            
+                            // Perform a context switch out for the higher priority process
                             performContextSwitchOut(scheduler, core, node);
+                            // Set the state of the preempted process to ready
                             setProcessState(workload, node->data->pid, READY);
+                            // Increment the number of context switches in statistics
+                            processStat->nbContextSwitches++;
                         }
                     }
-                    // Check if there is a process in the node's queue (preempt if so)
+                    // If the current queue is the node's queue
                     else if (j == node->indexReadyQueue)
                     {
+                        int pid = node->data->pid;
+                        // If the algorithm is SJF
                         if (algorithmInfo->type == SJF)
                         {
-                            int pid = node->data->pid;
+                            // Get the PID of the next shortest job
                             int newPid = sjfAlgorithm(scheduler->readyQueue[node->indexReadyQueue], workload);
+                            // If no new process found, exit loop
                             if (newPid == -1)
                             {
                                 break;
                             }
-                            
+                            // If the new job has shorter execution time, preempt
                             if (getProcessCurEventTimeLeft(workload, pid) > getProcessCurEventTimeLeft(workload, newPid))
                             {
                                 performContextSwitchOut(scheduler, core, node);
                                 setProcessState(workload, node->data->pid, READY);
+                                processStat->nbContextSwitches++;
+                            }
+                        }
+                        // If the algorithm is Priority
+                        else if (algorithmInfo->type == PRIORITY)
+                        {
+                            // Get the PID of the next highest priority process
+                            int newPid = priorityAlgorithm(scheduler->readyQueue[node->indexReadyQueue]);
+                            // Search for the node of the new process in its queue
+                            QueueNode *newNode = searchInQueue(scheduler->readyQueue[node->indexReadyQueue], newPid);
+                            // If the new process exists and has higher priority, preempt
+                            if (newNode)
+                            {
+                                if (node->data->priority > newNode->data->priority)
+                                {
+                                    performContextSwitchOut(scheduler, core, node);
+                                    setProcessState(workload, node->data->pid, READY);
+                                    processStat->nbContextSwitches++;
+                                }
                             }
                         }
                     }
                 }
             }
         }
-
-        return;
     }
 }
 
 
-void updateSchedulingValue(Scheduler *scheduler, Workload *workload)
+
+void updateSchedulingValue(Scheduler *scheduler, Workload *workload, AllStats *stats)
 {
     if (!scheduler)
     {
@@ -531,14 +567,14 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload)
         Queue *queue = scheduler->readyQueue[i];
         SchedulingAlgorithm *algoritmInfo = scheduler->readyQueueAlgorithms[i];
 
-        if (algoritmInfo->ageLimit > 0)
+        QueueNode *current = queue->head;
+        while (current)
         {
-            QueueNode *current = queue->head;
-            while (current)
-            {
-                current->age++;
-                current = current->nextNode;
-            }
+        ProcessStats *processStat = getProcessStats(stats, current->data->pid);
+
+            processStat->waitingTime ++;
+            current->age++;
+            current = current->nextNode;
         }
     }
 
@@ -564,7 +600,7 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload)
 
 /* --------------------- Assign Ressources ------------------------ */
 
-void setProcessToCore(Computer *computer, Workload *workload, int indexCore)
+void setProcessToCore(Computer *computer, Workload *workload, int indexCore, AllStats *stats)
 {
     if (!computer)
     {
@@ -583,6 +619,7 @@ void setProcessToCore(Computer *computer, Workload *workload, int indexCore)
     
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
+        ProcessStats *processStat = getProcessStats(stats, pid);
         QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
         if (node)
         {
@@ -594,6 +631,7 @@ void setProcessToCore(Computer *computer, Workload *workload, int indexCore)
                 core->pid = pid;
                 core->state = CONTEXT_SWITCHING_IN;
                 core->timer = SWITCH_IN_DURATION;
+                processStat->nbContextSwitches++;
             }
         }
     }
@@ -783,7 +821,7 @@ static void checkEventsInReadyQueue(Scheduler *scheduler)
 }
 
 
-static void checkEventsInRunningQueue(Computer *computer, Workload *workload) 
+static void checkEventsInRunningQueue(Computer *computer, Workload *workload, AllStats *stats) 
 {
     if (!computer) 
     {
@@ -798,6 +836,7 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload)
     while (current) 
     {
         // Get scheduling algorithm information for the current process
+        ProcessStats *processStat = getProcessStats(stats, current->data->pid);
         SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[current->indexReadyQueue];
         QueueNode *tmp = current;
         current = current->nextNode;
@@ -832,6 +871,7 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload)
                         {
                             performContextSwitchOut(scheduler, core, tmp);
                             setProcessState(workload, tmp->data->pid, READY);
+                            processStat->nbContextSwitches++;
                             continue;
                         }
                     }
@@ -851,6 +891,7 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload)
                     {
                         performContextSwitchOut(scheduler, core, tmp);
                         setProcessState(workload, tmp->data->pid, READY);
+                        processStat->nbContextSwitches++;
                         continue;
                     }
                 }

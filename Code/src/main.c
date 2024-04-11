@@ -188,12 +188,12 @@ int main(int argc, const char *argv[])
     printVerbose("Starting simulation\n");
     launchSimulation(workload, readyQueueAlgorithms, atoi(argv[5]), atoi(argv[3]), graph, allStats);
     printVerbose("Simulation finished\n");
-/* 
+
     printVerbose("Printing results\n");
     printf("----------------- Stats -----------------\n");
     printStats(allStats);
     printf("-----------------------------------------\n");
-*/
+
     printf("----------------- Graph -----------------\n");
     printGraph(graph);
     printf("-----------------------------------------\n");

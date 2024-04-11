@@ -73,7 +73,7 @@ void removeProcessFromScheduler(Computer *computer, int pid, int indexCore);
  * @param scheduler: All composants of the computer (scheduler, cpu, and disk)
  * @param workload: The workload
  */
-void schedulingEvents(Computer *computer, Workload *workload);
+void schedulingEvents(Computer *computer, Workload *workload, AllStats *stats);
 
 
 /**
@@ -82,7 +82,7 @@ void schedulingEvents(Computer *computer, Workload *workload);
  * @param scheduler: The scheduler
  * @param workload: The workload
  */
-void updateSchedulingValue(Scheduler *scheduler, Workload *workload);
+void updateSchedulingValue(Scheduler *scheduler, Workload *workload, AllStats *stats);
 
 /**
  * Check if a process must be preempted (if a process with higher priority is in the scheduler).
@@ -91,7 +91,7 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload);
  * @param computer: All composants of the computer (scheduler, cpu, and disk)
  * @param workload: The workload
  */
-void preemption(Computer *computer, Workload *workload);
+void preemption(Computer *computer, Workload *workload, AllStats *stats);
 
 /* --------------------- Assign Ressources ------------------------ */
 
@@ -102,7 +102,7 @@ void preemption(Computer *computer, Workload *workload);
  * @param indexCore: The index of the core to change
  * @param pid: The pid of the proces
  */
-void setProcessToCore(Computer *computer, Workload *workload, int indexCore);
+void setProcessToCore(Computer *computer, Workload *workload, int indexCore, AllStats *stats);
 
 /**
  * Set the first process of the waiting queue to the disk

@@ -89,7 +89,7 @@ static void setProcessAdvancementTime(Workload *workload, int pid, int advanceme
  * @param workload: the workload
  * @return true if all processes have finished, false otherwise
  */
-static bool workloadOver(const Workload *workload);
+static bool workloadOver(Workload *workload);
 
 /**
  * Check all possible events of the simultation. If a new process must be add to the scheduler, if a process has an IO event at the current time on a core
@@ -99,16 +99,16 @@ static bool workloadOver(const Workload *workload);
  * @param workload: the workload
  * @param time: the current time unit of the simulation
  */
-static void checkEvents(Computer *computer, Workload *workload, int time);
+static void checkEvents(Computer *computer, Workload *workload, int time, AllStats *stats);
 
 /**
  * Assign processes to ressources if possible thanks to the scheduling of the processes
  * 
  * @param computer: all composant of the computer (scheduler, cpu, and disk)
  */
-static void assigningRessources(Computer *computer, Workload *workload);
+static void assigningRessources(Computer *computer, Workload *workload, AllStats *stats);
 
-static void updateValue(Computer *computer, Workload *workload);
+static void updateValue(Computer *computer, Workload *workload, AllStats *stats);
 
 static void addAllProcessesToStats(AllStats *stats, Workload *workload);
 
@@ -122,6 +122,9 @@ static void addAllProcessesToStats(AllStats *stats, Workload *workload);
  *         the same time
  */
 static int compareProcessStartTime(const void *a, const void *b);
+
+
+static void fullFillGraph(ProcessGraph *graph, Computer *computer, Workload *workload, int time);
 
 /* -------------------------- getters and setters -------------------------- */
 
@@ -492,7 +495,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     /* Main loop of the simulation.*/
     while (!workloadOver(workload)) // You probably want to change this condition
     {      
-        printf("Time: %d\n", time);
+        /* printf("Time: %d\n", time);
         printQueue(computer->scheduler);
         printf("|----------CPU----------|\n");
         for (int i = 0; i < cpu->coreCount; i++)
@@ -518,45 +521,29 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         }
         printf("|----------DISK---------|\n");
         printf("    DISK: |PID: %d|\n", disk->pid);
-        printf("|-----------------------|\n\n");
+        printf("|-----------------------|\n\n"); */
 
-        checkEvents(computer, workload, time);
-        assigningRessources(computer, workload);
-        updateValue(computer, workload);
+        checkEvents(computer, workload, time, stats);
+        assigningRessources(computer, workload, stats);
+        updateValue(computer, workload, stats);
 
-        for (int i = 0; i < workload->nbProcesses; i++)
-        {
-            int pid = getPIDFromWorkload(workload, i);
-            if (time >= getProcessStartTime(workload, pid))
-            {
-                ProcessState state = getProcessState(workload, pid);
-                if (state == RUNNING)
-                {
-                    for (int i = 0; i < cpu->coreCount; i++)
-                    {
-                        Core *core = cpu->cores[i];
-                        if (pid == core->pid)
-                        {
-                            addProcessEventToGraph(graph, pid, time, state, i);
-                        }
-                    }
-                }
-                else
-                {
-                    addProcessEventToGraph(graph, pid, time, state, 0);
-                }
-            }
-        }
-
+        fullFillGraph(graph, computer, workload, time);
+        
         time++;
+        if (time >= 200)
+        {
+            break;
+        }
+        
     }
+
     freeComputer(computer);
 }
 
 
 /* ---------------------------- static functions --------------------------- */
 
-static void checkEvents(Computer *computer, Workload *workload, int time)
+static void checkEvents(Computer *computer, Workload *workload, int time, AllStats *stats)
 {
     if (!computer)
     {
@@ -571,16 +558,19 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     // Check if new processes can be add to the scheduler
     for (int i = 0; i < workload->nbProcesses; i++)
     {
-        ProcessSimulationInfo *process = workload->processesInfo[i];
         int pid = getPIDFromWorkload(workload, i);
+        ProcessStats *processStat = getProcessStats(stats, pid);
+        ProcessSimulationInfo *process = workload->processesInfo[i];
         int startTime = getProcessStartTime(workload, pid);
 
         if (time == startTime)
         {
             PCB *pcb = process->pcb;
+            // Add the process to the scheduler
             addProcessToScheduler(scheduler, pcb);
-
-            // skip the event (0, CPU) as the process is in the ready queue
+            // Set the arrival time stat
+            processStat->arrivalTime = time;
+            // Skip the event (0, CPU) as the process is in the ready queue
             setProcessNextEvent(workload, pcb->pid);
         }
     }
@@ -593,6 +583,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
         if (core->state == WORKING)
         {
             int pid = core->pid;
+            ProcessStats *processStat = getProcessStats(stats, pid);
             int processDuration = getProcessDuration(workload, pid);
             int advancementTime = getProcessAdvancementTime(workload, pid);
 
@@ -600,7 +591,8 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
             {
                 //Remove process from scheduler (in running queue)
                 removeProcessFromScheduler(computer, pid, i);
-
+                // Set the finishTime state
+                processStat->finishTime = time;
                 // Set the new state of the process
                 setProcessState(workload, pid, TERMINATED);
             }
@@ -608,7 +600,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     }
 
     // Check scheduling events
-    schedulingEvents(computer, workload);
+    schedulingEvents(computer, workload, stats);
 
     // Check for the end of context switch or interrupt
     for (int i = 0; i < cpu->coreCount; i++)
@@ -648,12 +640,14 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     }
 
     // Check for preemption
-    preemption(computer, workload);
+    preemption(computer, workload, stats);
 
     // Check process events that runs on cpu
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
+        ProcessStats *processStat = getProcessStats(stats, core->pid);
+
         if (core->state == WORKING)
         {
             int pid = core->pid;
@@ -675,6 +669,8 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
                 core->state = CONTEXT_SWITCHING_OUT;
                 //Remove the pid from the core
                 core->pid = -1;
+                // Increment the context switch stat
+                processStat->nbContextSwitches++;
             }
         }
     }
@@ -702,7 +698,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time)
     }
 }
 
-static void assigningRessources(Computer *computer, Workload *workload)
+static void assigningRessources(Computer *computer, Workload *workload, AllStats *stats)
 {
     if (!computer)
     {
@@ -719,7 +715,7 @@ static void assigningRessources(Computer *computer, Workload *workload)
 
         if (core->state == IDLE)
         {
-            setProcessToCore(computer, workload, i);
+            setProcessToCore(computer, workload, i, stats);
         }
     }
     
@@ -729,7 +725,7 @@ static void assigningRessources(Computer *computer, Workload *workload)
     }
 }
 
-static void updateValue(Computer *computer, Workload *workload)
+static void updateValue(Computer *computer, Workload *workload, AllStats *stats)
 {
     if (!computer)
     {
@@ -745,19 +741,21 @@ static void updateValue(Computer *computer, Workload *workload)
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
+        ProcessStats *processStat = getProcessStats(stats, core->pid);
         if (core->timer > 0)
         {
             core->timer--;
         }
         else if (core->state == WORKING)
         {
+            processStat->cpuTime++;
             int previousAdvancement = getProcessAdvancementTime(workload, core->pid);
             setProcessAdvancementTime(workload, core->pid, previousAdvancement + 1);
         }
     }
 
     //Update value in scheduler
-    updateSchedulingValue(scheduler, workload);
+    updateSchedulingValue(scheduler, workload, stats);
 
     // Update value on disk
     if (!disk->isIdle)
@@ -767,11 +765,12 @@ static void updateValue(Computer *computer, Workload *workload)
     }
 }
 
-static bool workloadOver(const Workload *workload)
+static bool workloadOver(Workload *workload)
 {
     for (int i = 0; i < workload->nbProcesses; i++)
     {
-        if (workload->processesInfo[i]->advancementTime < workload->processesInfo[i]->processDuration)
+        int pid = getPIDFromWorkload(workload, i);
+        if (getProcessState(workload, pid) != TERMINATED)
         {
             return 0;
         }
@@ -822,4 +821,33 @@ static int compareProcessStartTime(const void *a, const void *b)
     {
         return 0;
     }
+}
+
+static void fullFillGraph(ProcessGraph *graph, Computer *computer, Workload *workload, int time)
+{
+    CPU *cpu = computer->cpu;
+
+    for (int i = 0; i < workload->nbProcesses; i++)
+        {
+            int pid = getPIDFromWorkload(workload, i);
+            if (time >= getProcessStartTime(workload, pid))
+            {
+                ProcessState state = getProcessState(workload, pid);
+                if (state == RUNNING)
+                {
+                    for (int i = 0; i < cpu->coreCount; i++)
+                    {
+                        Core *core = cpu->cores[i];
+                        if (pid == core->pid)
+                        {
+                            addProcessEventToGraph(graph, pid, time, state, i);
+                        }
+                    }
+                }
+                else
+                {
+                    addProcessEventToGraph(graph, pid, time, state, 0);
+                }
+            }
+        }
 }

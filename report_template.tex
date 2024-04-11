@@ -1,0 +1,60 @@
+\documentclass[a4paper, 10pt]{article}
+\usepackage[top=3cm, bottom=3cm, left = 2cm, right = 2cm]{geometry}
+\geometry{a4paper}
+\usepackage[utf8]{inputenc}
+\usepackage{bm}  
+\usepackage[pdftex,bookmarks,colorlinks,breaklinks]{hyperref}  
+\usepackage{fancyhdr}
+\setlength{\headheight}{55pt}
+\pagestyle{fancy}
+\fancyhf{}
+
+% Update XX and YY
+\fancyhead[L]{Team 20 \hspace{10.5cm} INFO0940-1 - Project 1 (2024)
+s191895 ROTHEUDT Thomas\\
+s203724 LORENZEN Pierre\\
+}
+
+
+\begin{document}
+
+\section*{Overview of your approach}
+
+Explain here a short overview of your structure/code (you can include figures).
+
+\section*{Joker}
+
+%Which joker do you use ? 
+We choose to use the joker for the multilevel feedback queue scheduling.
+
+
+\section*{Project Comprehension}
+
+\subsection*{Q) Assuming that there is no context switch time (set to 0) and all processes are equally important, what do you think is the best scheduling algorithm among the four proposed? Why?}\vspace{0.5cm}
+
+The best scheduling algorithm will be the Round Robin with a short round robin slice. 
+Indeed, the round robin algorithm avoids starvation and allows the same amout of time
+on the CPU for each proccess. The short slice will allow to have a good reactivity 
+of the system if a new proccess arrive. Without context switch time, the round robin slice 
+time can be minimal. 
+
+\subsection*{Q) Do you think this algorithm is implemented in most operating systems? Why?}\vspace{0.5cm}
+
+We think that most operating systems are using the round robin algorithm with 
+another algorithm to deal with the priority of the proccess. 
+
+\section*{Feedback}
+
+\begin{itemize}
+    \item Difficulty: This project was more difficult than the others 
+    because we had to first understand the code by ourselves.
+    \item Amount of work: %je te laisse remplir tu sais mieux que moi
+    \item Other: What we were asked for was not very clear. We had to ask a lot of questions 
+    and read several times the assignment to understand what we were asked.
+\end{itemize}
+
+%Was it too easy or too difficult compared to other projects?
+%Was it too short or too long compared to other projects?
+%If you have some remarks (positive or negative), you are free to write them.
+ 
+\end{document}

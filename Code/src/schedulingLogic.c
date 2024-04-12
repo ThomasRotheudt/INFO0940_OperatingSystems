@@ -555,6 +555,7 @@ void preemption(Computer *computer, Workload *workload, AllStats *stats)
 
 void updateSchedulingValue(Scheduler *scheduler, Workload *workload, AllStats *stats)
 {
+    // Check if the scheduler exists
     if (!scheduler)
     {
         fprintf(stderr, "Error: The scheduler does not exist.\n");
@@ -569,77 +570,106 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload, AllStats *s
         QueueNode *current = queue->head;
         while (current)
         {
-        ProcessStats *processStat = getProcessStats(stats, current->data->pid);
+            // Retrieve statistics for the current process
+            ProcessStats *processStat = getProcessStats(stats, current->data->pid);
 
-            processStat->waitingTime ++;
+            // Increment waiting time and turnaround time for the process
+            processStat->waitingTime++;
             processStat->turnaroundTime++;
+
+            // Increment the age of the process in the ready queue
             current->age++;
+
+            // Move to the next process in the ready queue
             current = current->nextNode;
         }
     }
 
-    // Update values on running queue
+    // Update values on the running queue
     QueueNode *current = scheduler->runningQueue->head;
     while (current)
     {
-        SchedulingAlgorithm *algoritmInfo = scheduler->readyQueueAlgorithms[current->indexReadyQueue];
+        // Retrieve scheduling algorithm information for the current process
+        SchedulingAlgorithm *algorithmInfo = scheduler->readyQueueAlgorithms[current->indexReadyQueue];
+
+        // Check if the current process is running
         if (getProcessState(workload, current->data->pid) == RUNNING)
         {
-            if (algoritmInfo->executiontTimeLimit > 0)
+            // If the algorithm has an execution time limit, increment the execution time of the process
+            if (algorithmInfo->executiontTimeLimit > 0)
             {
                 current->execTime++;
             }
-            if (algoritmInfo->type == RR)
+
+            // If the algorithm is Round Robin, increment the Round Robin timer of the process
+            if (algorithmInfo->type == RR)
             {
                 current->RRTimer++;
             }
         }
+
+        // Move to the next process in the running queue
         current = current->nextNode;
     }
 }
+
 
 /* --------------------- Assign Ressources ------------------------ */
 
 void setProcessToCore(Computer *computer, Workload *workload, int indexCore, AllStats *stats)
 {
+    // Check if the computer exists
     if (!computer)
     {
         fprintf(stderr, "Error: The computer does not exist.\n");
         return;
     }
     
+    // Retrieve scheduler and core information from the computer
     Scheduler *scheduler = computer->scheduler;
     Core *core = computer->cpu->cores[indexCore];
 
+    // Get the next process to schedule
     int pid = scheduling(scheduler, workload);
+    // If no process is available, return
     if (pid == -1)
     {
         return;
     }
     
+    // Iterate through the ready queues of the scheduler
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
+        // Retrieve statistics for the process
         ProcessStats *processStat = getProcessStats(stats, pid);
+        // Search for the process in the ready queue
         QueueNode *node = searchInQueue(scheduler->readyQueue[i], pid);
+        // If the process is found in the ready queue
         if (node)
         {
+            // Check if the core is idle
             if (core->state == IDLE)
             {
+                // Remove the process from the ready queue
                 node = removeElement(scheduler->readyQueue[i], node);
+                // Insert the process into the running queue
                 insertInQueue(scheduler->runningQueue, node);
 
+                // Update core information
                 core->pid = pid;
                 core->state = CONTEXT_SWITCHING_IN;
                 core->timer = SWITCH_IN_DURATION;
-                processStat->nbContextSwitches++;
 
-                processStat->meanResponseTime += processStat->turnaroundTime;
-                processStat->turnaroundTime = 0;
-                processStat->finishTime++;
+                // Update process statistics
+                processStat->meanResponseTime += processStat->turnaroundTime; // Add the current time waiting in the queue at the mean response time
+                processStat->turnaroundTime = 0; // Use this to compute the number of time waiting in the ready queue before switching in
+                processStat->finishTime++; // Use this to compute the number of switch in
+                processStat->nbContextSwitches++;
             }
         }
     }
 }
+
 
 
 void setProcessToDisk(Computer *computer)
@@ -661,45 +691,6 @@ void setProcessToDisk(Computer *computer)
         disk->pid = node->data->pid;
     }
 }
-
-
-void printQueue(Scheduler *scheduler)
-{
-    printf("\n|------------------QUEUE-----------------------|\n");
-    for (int i = 0; i < scheduler->readyQueueCount; i++)
-    {
-        printf("Queue %d: head---> ", i);
-        QueueNode *current = scheduler->readyQueue[i]->head;
-        while (current)
-        {
-            printf("%d ", current->data->pid);
-            current = current->nextNode;
-        }
-        printf("<---tail\n");
-
-        printf("Number of nodes: %d\n", scheduler->readyQueue[i]->nbrOfNode);
-    }
-    printf("|--------------WAITING QUEUE-------------------|\n");
-        printf("Waiting queue: head---> ");
-        QueueNode *current = scheduler->waitingQueue->head;
-        while (current)
-        {
-            printf("%d ", current->data->pid);
-            current = current->nextNode;
-        }
-        printf("<---tail\n");
-    printf("|--------------RUNNING QUEUE-------------------|\n");
-        printf("Running queue: head---> ");
-        current = scheduler->runningQueue->head;
-        while (current)
-        {
-            printf("%d ", current->data->pid);
-            current = current->nextNode;
-        }
-        printf("<---tail\n");
-    printf("|----------------------------------------------|\n\n");
-}
-
 
 /* ---------------------------- static functions --------------------------- */
 

@@ -587,23 +587,31 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
         {
             switch (core->state)
             {
+                // Case the core is in Context Switching In state and has finish the switch
                 case CONTEXT_SWITCHING_IN:
+                    // Core is now working
                     core->state = WORKING;
                     setProcessState(workload, core->pid, RUNNING);
                     break;
 
+                // Case the core is in Context Switching In state and has finish the switch
                 case CONTEXT_SWITCHING_OUT:
+                    // Core is now free to use
                     core->state = IDLE;
                     break;
                     
+                // Case the core in in interrupt state and has finish the interrupt
                 case INTERRUPT:
                     setProcessState(workload, disk->pid, READY);
+                    // The process has finish its IO and can return in its ready queue
                     returnFromWaitQueue(scheduler, disk->pid);
                     disk->isFree = true;
                     disk->pid = -1;
 
+                    // Return to the core context before the interrupt
                     cpu->cores[FIRST_CORE]->state = cpu->cores[FIRST_CORE]->previousState;
                     cpu->cores[FIRST_CORE]->timer = cpu->cores[FIRST_CORE]->previousTimer;
+                    // If the state before the interrupt was working re run the process
                     if (cpu->cores[FIRST_CORE]->state == WORKING)
                     {
                         setProcessState(workload, cpu->cores[FIRST_CORE]->pid, RUNNING);
@@ -625,12 +633,14 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
         Core *core = cpu->cores[i];
         ProcessStats *processStat = getProcessStats(stats, core->pid);
 
+        // If the current core is working check for IO events
         if (core->state == WORKING)
         {
             int pid = core->pid;
             int advancementTime = getProcessAdvancementTime(workload, pid);
             int nextEventTime = getProcessNextEventTime(workload, pid);
 
+            // If there is an event at the actual advancement time of the process put the process on waiting queue
             if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == IO_BURST)
             {
                 // Add the process to the waiting queue
@@ -648,28 +658,28 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
                 core->pid = -1;
                 // Increment the context switch stat
                 processStat->nbContextSwitches++;
-
-
             }
         }
     }
 
-    // Check process events that runs on disk
+    // Check process events that runs on disk if disk is not idle
     if (!disk->isIdle)
     {
         int pid = disk->pid;
         int advancementTime = getProcessAdvancementTime(workload, pid);
         int nextEventTime = getProcessNextEventTime(workload, pid);
 
-
-
+        // If there is an event at the actual advancement time of the process trigger an interrupt (handle by cpu)
         if ((advancementTime == nextEventTime) && getProcessNextEventType(workload, pid) == CPU_BURST)
         {
+
             Core *interruptedCore = cpu->cores[FIRST_CORE];
             if (interruptedCore->state == WORKING)
             {
                 setProcessState(workload, interruptedCore->pid, READY);
             }
+
+            // Save the actual context of the core before the interrupt (timer and state)
             interruptHandler(computer);
             // Update the next event of the process in the workload
             setProcessNextEvent(workload, pid);
@@ -679,30 +689,36 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
 
 static void assigningRessources(Computer *computer, Workload *workload, AllStats *stats)
 {
+    // Check if the computer exists
     if (!computer)
     {
         fprintf(stderr, "Error: The computer does not exist.\n");
         return;
     }
 
+    // Retrieve CPU and disk information from the computer
     CPU *cpu = computer->cpu;
     Disk *disk = computer->disk;
 
+    // Assign processes to idle CPU cores
     for (int i = 0; i < cpu->coreCount; i++)
     {
         Core *core = cpu->cores[i];
 
+        // If the core is idle, assign a process to it
         if (core->state == IDLE)
         {
             setProcessToCore(computer, workload, i, stats);
         }
     }
     
+    // If the disk is free, assign a process to it
     if (disk->isFree)
     {
         setProcessToDisk(computer);
     }
 }
+
 
 static void updateValue(Computer *computer, Workload *workload, AllStats *stats)
 {

@@ -111,8 +111,4 @@ void setProcessToCore(Computer *computer, Workload *workload, int indexCore, All
  */
 void setProcessToDisk(Computer *computer);
 
-
-
-void printQueue(Scheduler *scheduler);
-
 #endif // schedulingLogic_h

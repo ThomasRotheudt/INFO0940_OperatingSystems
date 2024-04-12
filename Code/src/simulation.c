@@ -229,7 +229,10 @@ static ProcessEventType getProcessNextEventType(Workload *workload, int pid)
     {
         if (getPIDFromWorkload(workload, i) == pid)
         {
-            return workload->processesInfo[i]->nextEvent->type;
+            if (workload->processesInfo[i]->nextEvent)
+            {
+                return workload->processesInfo[i]->nextEvent->type;
+            }
         }
     }
     return -1;
@@ -495,34 +498,6 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     /* Main loop of the simulation.*/
     while (!workloadOver(workload)) // You probably want to change this condition
     {      
-        /* printf("Time: %d\n", time);
-        printQueue(computer->scheduler);
-        printf("|----------CPU----------|\n");
-        for (int i = 0; i < cpu->coreCount; i++)
-        {
-            printf("   CPU %d: |PID: %d|\n", i, cpu->cores[i]->pid);
-            if (cpu->cores[i]->state == CONTEXT_SWITCHING_IN)
-            {
-                printf("   Core on switching in\n");
-            }
-            else if (cpu->cores[i]->state == CONTEXT_SWITCHING_OUT)
-            {
-                printf("   Core on switching out\n");
-            }
-            else if (cpu->cores[i]->state == WORKING)
-            {
-                printf("   Core is working\n");
-            }
-            else if (cpu->cores[i]->state == INTERRUPT)
-            {
-                printf("   Core is interrupting\n");
-            }
-            
-        }
-        printf("|----------DISK---------|\n");
-        printf("    DISK: |PID: %d|\n", disk->pid);
-        printf("|-----------------------|\n\n"); */
-
         checkEvents(computer, workload, time, stats);
         assigningRessources(computer, workload, stats);
         updateValue(computer, workload, stats);
@@ -565,6 +540,8 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
             processStat->arrivalTime = time;
             // Skip the event (0, CPU) as the process is in the ready queue
             setProcessNextEvent(workload, pcb->pid);
+            // Trigger timer
+            processStat->turnaroundTime = 0;
         }
     }
 
@@ -584,10 +561,15 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
             {
                 //Remove process from scheduler (in running queue)
                 removeProcessFromScheduler(computer, pid, i);
-                // Set the finishTime state
-                processStat->finishTime = time;
                 // Set the new state of the process
                 setProcessState(workload, pid, TERMINATED);
+
+                // Compute mean response time
+                processStat->meanResponseTime /= (double) processStat->finishTime;
+                // Set the finishTime state
+                processStat->finishTime = time;
+                // Compute turnaround
+                processStat->turnaroundTime = processStat->finishTime - processStat->arrivalTime;
             }
         }
     }
@@ -664,6 +646,8 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
                 core->pid = -1;
                 // Increment the context switch stat
                 processStat->nbContextSwitches++;
+
+
             }
         }
     }

@@ -92,14 +92,6 @@ static void checkEventsInReadyQueue(Scheduler *scheduler);
 static void checkEventsInRunningQueue(Computer *computer, Workload *workload, AllStats *stats);
 
 /**
- * Perform a context switch out for the core that is running the process in the node
- * 
- * @param computer: All composants of the computer (scheduler, cpu, and disk) 
- * @param node: The node that contains the process
- */
-static void performContextSwitchOut(Scheduler *scheduler, Core *core, QueueNode *node);
-
-/**
  * Find the core on the cpu that runs the process given its pid
  * 
  * @param cpu: The cpu
@@ -360,6 +352,27 @@ void addProcessToScheduler(Scheduler *scheduler, PCB *data)
 }
 
 
+void returnFromRunningQueue(Scheduler *scheduler, int pid)
+{
+    // Check if the scheduler exist (is allocated)
+    if (!scheduler)
+    {
+        fprintf(stderr, "Error: The scheduler does not exist.\n");
+        return;
+    }
+
+    // Search the node in the running queue (Only Running -> Waiting), NULL if not in the queue
+    QueueNode *node = searchInQueue(scheduler->runningQueue, pid);
+    if (node)
+    {
+        // Remove the node from the Running Queue
+        node = removeElement(scheduler->runningQueue, node);
+        // Insert the removed node in the waiting queue
+        insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
+    }
+}
+
+
 void addProcessToWaitingQueue(Scheduler *scheduler, int pid)
 {
     // Check if the scheduler exist (is allocated)
@@ -496,8 +509,10 @@ void preemption(Computer *computer, Workload *workload, AllStats *stats)
                             {   
                                 node->RRTimer = 0;
                             }
-                            // Perform a context switch out for the higher priority process
-                            performContextSwitchOut(scheduler, core, node);
+                            // Set the context switch out of the core
+                            core->timer = SWITCH_OUT_DURATION;
+                            // Set the state of the core to context switching out
+                            core->state = CONTEXT_SWITCHING_OUT;
                             // Set the state of the preempted process to ready
                             setProcessState(workload, node->data->pid, READY);
                             // Increment the number of context switches in statistics
@@ -521,7 +536,10 @@ void preemption(Computer *computer, Workload *workload, AllStats *stats)
                             // If the new job has shorter execution time, preempt
                             if (getProcessCurEventTimeLeft(workload, pid) > getProcessCurEventTimeLeft(workload, newPid))
                             {
-                                performContextSwitchOut(scheduler, core, node);
+                                // Set the context switch out of the core
+                                core->timer = SWITCH_OUT_DURATION;
+                                // Set the state of the core to context switching out
+                                core->state = CONTEXT_SWITCHING_OUT;
                                 setProcessState(workload, node->data->pid, READY);
                                 processStat->nbContextSwitches++;
                             }
@@ -538,7 +556,10 @@ void preemption(Computer *computer, Workload *workload, AllStats *stats)
                             {
                                 if (node->data->priority > newNode->data->priority)
                                 {
-                                    performContextSwitchOut(scheduler, core, node);
+                                    // Set the context switch out of the core
+                                    core->timer = SWITCH_OUT_DURATION;
+                                    // Set the state of the core to context switching out
+                                    core->state = CONTEXT_SWITCHING_OUT;
                                     setProcessState(workload, node->data->pid, READY);
                                     processStat->nbContextSwitches++;
                                 }
@@ -664,7 +685,6 @@ void setProcessToCore(Computer *computer, Workload *workload, int indexCore, All
                 processStat->meanResponseTime += processStat->turnaroundTime; // Add the current time waiting in the queue at the mean response time
                 processStat->turnaroundTime = 0; // Use this to compute the number of time waiting in the ready queue before switching in
                 processStat->finishTime++; // Use this to compute the number of switch in
-                processStat->nbContextSwitches++;
             }
         }
     }
@@ -753,26 +773,6 @@ static Core *findProcessCore(CPU *cpu, int pid)
     return NULL;
 }
 
-
-static void performContextSwitchOut(Scheduler *scheduler, Core *core, QueueNode *node)
-{
-    if (!scheduler || !core || !node)
-    {
-        return;
-    }
-    
-    node = removeElement(scheduler->runningQueue, node);
-    insertInQueue(scheduler->readyQueue[node->indexReadyQueue], node);
-    
-    // Set the context switch out of the core
-    core->timer = SWITCH_OUT_DURATION;
-    // Set the state of the core to context switching out
-    core->state = CONTEXT_SWITCHING_OUT;
-    //Remove the pid from the core
-    core->pid = -1;
-}
-
-
 static void checkEventsInReadyQueue(Scheduler *scheduler)
 {
     for (int i = 0; i < scheduler->readyQueueCount; i++)
@@ -859,12 +859,15 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload, Al
                     }
 
                     // Perform context switch and set process state to ready if next queue is not empty
-                    if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0 && algorithmInfo->type == RR) 
+                    if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0) 
                     {
                         Core *core = findProcessCore(cpu, tmp->data->pid);
                         if (core)
                         {
-                            performContextSwitchOut(scheduler, core, tmp);
+                            // Set the context switch out of the core
+                            core->timer = SWITCH_OUT_DURATION;
+                            // Set the state of the core to context switching out
+                            core->state = CONTEXT_SWITCHING_OUT;
                             setProcessState(workload, tmp->data->pid, READY);
                             processStat->nbContextSwitches++;
                             continue;
@@ -884,7 +887,10 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload, Al
                     Core *core = findProcessCore(cpu, tmp->data->pid);
                     if (core)
                     {
-                        performContextSwitchOut(scheduler, core, tmp);
+                        // Set the context switch out of the core
+                        core->timer = SWITCH_OUT_DURATION;
+                        // Set the state of the core to context switching out
+                        core->state = CONTEXT_SWITCHING_OUT;
                         setProcessState(workload, tmp->data->pid, READY);
                         processStat->nbContextSwitches++;
                         continue;

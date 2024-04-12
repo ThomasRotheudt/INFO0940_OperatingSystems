@@ -39,6 +39,8 @@ void freeScheduler(Scheduler *scheduler);
  */
 void addProcessToScheduler(Scheduler *scheduler, PCB *data);
 
+void returnFromRunningQueue(Scheduler *scheduler, int pid);
+
 /**
  * Add a process to the waiting queue of the scheduler given its pid
  * 

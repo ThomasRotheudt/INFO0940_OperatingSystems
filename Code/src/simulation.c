@@ -596,6 +596,11 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
 
                 // Case the core is in Context Switching In state and has finish the switch
                 case CONTEXT_SWITCHING_OUT:
+                    if (core->pid != -1)
+                    {
+                        returnFromRunningQueue(scheduler, core->pid);
+                    }
+                    
                     // Core is now free to use
                     core->state = IDLE;
                     break;

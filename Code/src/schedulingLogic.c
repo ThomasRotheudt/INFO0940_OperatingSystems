@@ -573,6 +573,7 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload, AllStats *s
         ProcessStats *processStat = getProcessStats(stats, current->data->pid);
 
             processStat->waitingTime ++;
+            processStat->turnaroundTime++;
             current->age++;
             current = current->nextNode;
         }
@@ -632,6 +633,10 @@ void setProcessToCore(Computer *computer, Workload *workload, int indexCore, All
                 core->state = CONTEXT_SWITCHING_IN;
                 core->timer = SWITCH_IN_DURATION;
                 processStat->nbContextSwitches++;
+
+                processStat->meanResponseTime += processStat->turnaroundTime;
+                processStat->turnaroundTime = 0;
+                processStat->finishTime++;
             }
         }
     }

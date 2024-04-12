@@ -565,7 +565,6 @@ void updateSchedulingValue(Scheduler *scheduler, Workload *workload, AllStats *s
     for (int i = 0; i < scheduler->readyQueueCount; i++)
     {
         Queue *queue = scheduler->readyQueue[i];
-        SchedulingAlgorithm *algoritmInfo = scheduler->readyQueueAlgorithms[i];
 
         QueueNode *current = queue->head;
         while (current)

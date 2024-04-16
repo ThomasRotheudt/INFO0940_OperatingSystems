@@ -576,9 +576,6 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
         }
     }
 
-    // Check scheduling events
-    schedulingEvents(computer, workload, stats);
-
     // Check for the end of context switch or interrupt
     for (int i = 0; i < cpu->coreCount; i++)
     {
@@ -600,7 +597,7 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
                     {
                         returnFromRunningQueue(scheduler, core->pid);
                     }
-                    
+
                     // Core is now free to use
                     core->state = IDLE;
                     break;
@@ -629,9 +626,6 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
         }
     }
 
-    // Check for preemption
-    preemption(computer, workload, stats);
-
     // Check process events that runs on cpu
     for (int i = 0; i < cpu->coreCount; i++)
     {
@@ -654,7 +648,6 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
                 setProcessNextEvent(workload, pid);
                 // Update the state of the proces to WAITING
                 setProcessState(workload, pid, WAITING);
-
                 // Set the context switch out of the core
                 core->timer = SWITCH_OUT_DURATION;
                 // Set the state of the core to context switching out
@@ -666,6 +659,12 @@ static void checkEvents(Computer *computer, Workload *workload, int time, AllSta
             }
         }
     }
+
+    // Check scheduling events
+    schedulingEvents(computer, workload, stats);
+
+    // Check for preemption
+    preemption(computer, workload, stats);
 
     // Check process events that runs on disk if disk is not idle
     if (!disk->isIdle)
@@ -845,9 +844,19 @@ static void fullFillGraph(ProcessGraph *graph, Computer *computer, Workload *wor
                     }
                 }
                 else
-                {
+                {   
                     addProcessEventToGraph(graph, pid, time, state, 0);
                 }
+
+                if (!computer->disk->isIdle)
+                {
+                    addDiskEventToGraph(graph, computer->disk->pid, time, DISK_RUNNING);
+                }
+                else
+                {
+                    addDiskEventToGraph(graph, computer->disk->pid, time, DISK_IDLE);
+                }
+                
             }
         }
 }

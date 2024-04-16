@@ -32,7 +32,7 @@ typedef struct QueueNode_t QueueNode;
 
 struct QueueNode_t
 {
-    PCB *data; // PID of the process in the node
+    PCB *data; // PCB of the process in the node
     int indexReadyQueue; // The index of the queue in which the node is (use it when returns from waiting queue) 
     int age; // The time the process has spent in its current queue
     int execTime; // The execution time limit on the queue
@@ -407,6 +407,11 @@ void returnFromWaitQueue(Scheduler *scheduler, int pid)
     QueueNode *node = searchInQueue(scheduler->waitingQueue, pid);
     if (node)
     {
+        if (node->RRTimer > 0)
+        {
+            node->RRTimer = 0;
+        }
+        
         // Remove the node from the Waiting Queue
         node = removeElement(scheduler->waitingQueue, node);
         // Insert the removed node in the ready queue of the node
@@ -839,6 +844,28 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload, Al
         // Check if the RR timer is finished or the execution time limit is reached
         if (tmp->RRTimer >= algorithmInfo->RRSliceLimit || tmp->execTime >= algorithmInfo->executiontTimeLimit) 
         {
+            // Reset RR timer if it's reached and the scheduling algorithm is RR
+            if (tmp->RRTimer >= algorithmInfo->RRSliceLimit && algorithmInfo->type == RR) 
+            {
+                tmp->RRTimer = 0;
+
+                // Perform context switch and set process state to ready if next queue is not empty
+                if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0) 
+                {
+                    Core *core = findProcessCore(cpu, tmp->data->pid);
+                    if (core)
+                    {
+                        // Set the context switch out of the core
+                        core->timer = SWITCH_OUT_DURATION;
+                        // Set the state of the core to context switching out
+                        core->state = CONTEXT_SWITCHING_OUT;
+                        setProcessState(workload, tmp->data->pid, READY);
+                        processStat->nbContextSwitches++;
+                        continue;
+                    }
+                }
+            }
+            
             if (tmp->execTime >= algorithmInfo->executiontTimeLimit) 
             {
                 // Reset process parameters and move to the next queue if execution time limit is reached
@@ -872,28 +899,6 @@ static void checkEventsInRunningQueue(Computer *computer, Workload *workload, Al
                             processStat->nbContextSwitches++;
                             continue;
                         }
-                    }
-                }
-            }
-            
-            // Reset RR timer if it's reached and the scheduling algorithm is RR
-            if (tmp->RRTimer >= algorithmInfo->RRSliceLimit && algorithmInfo->type == RR) 
-            {
-                tmp->RRTimer = 0;
-
-                // Perform context switch and set process state to ready if next queue is not empty
-                if (scheduler->readyQueue[tmp->indexReadyQueue]->nbrOfNode > 0) 
-                {
-                    Core *core = findProcessCore(cpu, tmp->data->pid);
-                    if (core)
-                    {
-                        // Set the context switch out of the core
-                        core->timer = SWITCH_OUT_DURATION;
-                        // Set the state of the core to context switching out
-                        core->state = CONTEXT_SWITCHING_OUT;
-                        setProcessState(workload, tmp->data->pid, READY);
-                        processStat->nbContextSwitches++;
-                        continue;
                     }
                 }
             }

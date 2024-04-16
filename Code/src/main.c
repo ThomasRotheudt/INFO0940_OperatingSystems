@@ -10,6 +10,13 @@
 #include "utils.h"
 #include "schedulingAlgorithms.h"
 
+
+/* # pid, start_time, duration, priority, [list of timestamps and events] (IO, CPU)
+1, 0, 50, 1, [(0, CPU)]
+2, 1, 18, 1, [(0, CPU)] */
+
+
+
 /**
  * Print the help message.
  */

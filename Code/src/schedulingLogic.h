@@ -30,7 +30,6 @@ void freeScheduler(Scheduler *scheduler);
 /* -------------------------- scheduling functions ------------------------- */
 
 /* ------------------- Change Process of Queue -------------------- */
-
 /**
  * Add a new process to the first queue of the scheduler given its PID if it is not already in the scheduler.
  *
